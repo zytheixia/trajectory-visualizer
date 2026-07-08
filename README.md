@@ -15,7 +15,7 @@ npm run dev
 
 ## 支持格式
 
-支持 JSON 数组、包含 `events` / `trace` / `steps` 数组的 JSON 对象，以及 JSONL。事件字段采用“核心字段 + 扩展字段”的方式：可视化只依赖少量核心字段，其余字段会进入节点详情的扩展区。
+支持 JSON 数组、包含 `events` / `trace` / `steps` / `nodes` 数组的 JSON 对象，以及 JSONL。事件字段采用“核心字段 + 扩展字段”的方式：可视化只依赖少量核心字段，其余字段会进入节点详情的扩展区。
 
 ```json
 {
@@ -55,9 +55,23 @@ npm run dev
 - `status`: `success`、`running`、`failed`、`skipped`
 - `metadata`: 扩展字段对象，适合放 model、tokens、cost、command、exit_code、url、trace_id 等
 
-兼容字段：`role`、`kind`、`message`、`input`、`output`、`timestamp`、`started_at`。未识别的顶层字段不会丢弃，会自动合并到 `metadata` 展示。
+字段别名映射：
+
+- `id`: `id`、`event_id`、`node_id`、`step_id`、`span_id`
+- `type`: `type`、`role`、`kind`、`event_type`、`node_type`
+- `category`: `category`、`lane`、`group`、`phase`
+- `name`: `name`、`title`、`label`、`tool`、`action`
+- `content`: `content`、`message`、`text`、`input`、`output`、`summary`
+- `time`: `time`、`timestamp`、`started_at`、`created_at`、`ts`
+- `duration`: `duration`、`duration_ms`、`elapsed_ms`、`latency_ms`
+- `status`: `status`、`outcome`、`state`
+- `metadata`: `metadata`、`meta`、`attributes`、`extra`
+
+未识别的顶层字段不会丢弃，会自动合并到 `metadata` 展示。
 
 如果不传 `category`，工具会根据 `type` 做基础归类；无法识别时默认放到 `reasoning` 泳道。
+
+页面内置了多组示例：最小字段、字段别名、LLM 调用、浏览器 Agent、业务审批。可以用左侧示例下拉框切换查看不同字段组合的效果。
 
 ## 后续可扩展
 

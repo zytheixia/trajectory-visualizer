@@ -136,6 +136,14 @@ button.secondary {
   padding: 8px;
 }
 
+.sample-picker {
+  margin-top: 12px;
+}
+
+.sample-picker select {
+  width: 160px;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -23,6 +23,17 @@
             <span>导入运行轨迹</span>
             <small>支持 JSON 数组、events/trace/steps 对象、JSONL</small>
           </label>
+          <label class="control-line sample-picker">
+            <span>示例</span>
+            <select id="sampleSelect">
+              <option value="debug">调试修复</option>
+              <option value="minimal">最小字段</option>
+              <option value="aliases">字段别名</option>
+              <option value="llm">LLM 调用</option>
+              <option value="browser">浏览器 Agent</option>
+              <option value="business">业务审批</option>
+            </select>
+          </label>
           <div class="button-row">
             <button id="loadSampleBtn" type="button">载入示例</button>
             <button id="clearBtn" type="button" class="secondary">清空</button>
@@ -69,8 +80,9 @@
         <section class="panel">
           <h2>格式</h2>
           <pre class="format-note">[
-  {"type":"user","name":"用户请求","content":"..."},
-  {"type":"tool","name":"pytest","status":"failed"}
+  {"type":"llm_call","category":"reasoning"},
+  {"kind":"function","elapsed_ms":410},
+  {"metadata":{"model":"gpt-5"}}
 ]</pre>
         </section>
       </aside>
