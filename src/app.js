@@ -4,9 +4,14 @@ const fileInput = document.querySelector("#fileInput");
 const sampleSelect = document.querySelector("#sampleSelect");
 const loadSampleBtn = document.querySelector("#loadSampleBtn");
 const clearBtn = document.querySelector("#clearBtn");
+const schemeSelect = document.querySelector("#schemeSelect");
 const colorMode = document.querySelector("#colorMode");
 const showLabels = document.querySelector("#showLabels");
 const showGrid = document.querySelector("#showGrid");
+const mappingPanel = document.querySelector("#mappingPanel");
+const mappingSummary = document.querySelector("#mappingSummary");
+const mappingRows = document.querySelector("#mappingRows");
+const applyMappingBtn = document.querySelector("#applyMappingBtn");
 const statsGrid = document.querySelector("#statsGrid");
 const detailPanel = document.querySelector("#detailPanel");
 const trackName = document.querySelector("#trackName");
@@ -74,6 +79,55 @@ let positioned = [];
 let hoverIndex = -1;
 let selectedIndex = 0;
 let playTimer = null;
+let pendingRawEvents = [];
+let pendingTraceName = "";
+let discoveredFields = [];
+
+const visualizationSchemes = {
+  event_flow: {
+    label: "事件流",
+    description: "展示完整 agent 执行过程，适合通用 run trace。",
+    fields: [
+      { key: "type", label: "节点类型", required: true },
+      { key: "name", label: "节点名称", required: false },
+      { key: "category", label: "泳道分类", required: false },
+      { key: "content", label: "详情内容", required: false },
+      { key: "time", label: "发生时间", required: false },
+      { key: "duration", label: "耗时", required: false },
+      { key: "status", label: "状态", required: false },
+      { key: "id", label: "节点 ID", required: false },
+      { key: "metadata", label: "扩展字段对象", required: false }
+    ]
+  },
+  tool_timeline: {
+    label: "工具时间线",
+    description: "重点观察工具调用、命令执行、状态和耗时。",
+    fields: [
+      { key: "name", label: "工具/动作名称", required: true },
+      { key: "status", label: "执行状态", required: true },
+      { key: "time", label: "开始时间", required: false },
+      { key: "duration", label: "耗时", required: false },
+      { key: "content", label: "输入/输出摘要", required: false },
+      { key: "type", label: "节点类型", required: false },
+      { key: "id", label: "调用 ID", required: false },
+      { key: "metadata", label: "扩展字段对象", required: false }
+    ]
+  },
+  llm_trace: {
+    label: "LLM 调用链",
+    description: "重点观察模型调用、token、成本、耗时和安全检查。",
+    fields: [
+      { key: "name", label: "调用名称", required: true },
+      { key: "type", label: "节点类型", required: true },
+      { key: "time", label: "调用时间", required: false },
+      { key: "duration", label: "延迟/耗时", required: false },
+      { key: "status", label: "状态", required: false },
+      { key: "content", label: "提示/结果摘要", required: false },
+      { key: "metadata", label: "模型/token/cost 字段", required: false },
+      { key: "id", label: "调用 ID", required: false }
+    ]
+  }
+};
 
 const sampleTraces = {
   debug: {
@@ -400,33 +454,33 @@ function parseTrace(text) {
   throw new Error("JSON 需要是事件数组，或包含 events / trace / steps / nodes 数组。");
 }
 
-function normalizeEvents(rawEvents) {
+function normalizeEvents(rawEvents, fieldMapping = null) {
   return rawEvents
     .map((event, index) => {
-      const rawType = readField(event, "type") || readField(event, "category") || "agent";
+      const rawType = readField(event, "type", fieldMapping) || readField(event, "category", fieldMapping) || "agent";
       const type = normalizeType(rawType);
-      const category = normalizeCategory(readField(event, "category") || rawType);
-      const time = parseTime(readField(event, "time"), index);
-      const durationValue = readField(event, "duration") ?? 0;
+      const category = normalizeCategory(readField(event, "category", fieldMapping) || rawType);
+      const time = parseTime(readField(event, "time", fieldMapping), index);
+      const durationValue = readField(event, "duration", fieldMapping) ?? 0;
       const duration = Number(durationValue);
       const durationMs = Number.isFinite(duration)
-        ? isMillisecondDurationField(event)
+        ? isMillisecondDurationField(event, fieldMapping)
           ? duration
           : duration * 1000
         : 0;
-      const status = String(readField(event, "status") || "success").toLowerCase();
+      const status = String(readField(event, "status", fieldMapping) || "success").toLowerCase();
       return {
-        id: readField(event, "id") || `event-${index + 1}`,
+        id: readField(event, "id", fieldMapping) || `event-${index + 1}`,
         type,
         category,
         lane: category,
-        name: readField(event, "name") || typeLabel(type),
-        content: readField(event, "content") || "",
+        name: readField(event, "name", fieldMapping) || typeLabel(type),
+        content: readField(event, "content", fieldMapping) || "",
         time,
-        rawTime: readField(event, "time") || "",
+        rawTime: readField(event, "time", fieldMapping) || "",
         durationMs,
         status,
-        metadata: collectMetadata(event),
+        metadata: collectMetadata(event, fieldMapping),
         payload: event
       };
     })
@@ -445,13 +499,18 @@ function normalizeType(value) {
     .replace(/\s+/g, "_");
 }
 
-function readField(event, canonicalName) {
+function readField(event, canonicalName, fieldMapping = null) {
+  if (fieldMapping?.[canonicalName]) {
+    return readPath(event, fieldMapping[canonicalName]);
+  }
   const aliases = fieldAliases[canonicalName] || [canonicalName];
-  const key = aliases.find((alias) => event[alias] !== undefined && event[alias] !== null && event[alias] !== "");
-  return key ? event[key] : undefined;
+  const key = aliases.find((alias) => readPath(event, alias) !== undefined && readPath(event, alias) !== null && readPath(event, alias) !== "");
+  return key ? readPath(event, key) : undefined;
 }
 
-function isMillisecondDurationField(event) {
+function isMillisecondDurationField(event, fieldMapping = null) {
+  const mappedField = fieldMapping?.duration || "";
+  if (/_ms$|latency/i.test(mappedField)) return true;
   return ["duration_ms", "elapsed_ms", "latency_ms"].some((key) => event[key] !== undefined);
 }
 
@@ -460,14 +519,21 @@ function normalizeCategory(value) {
   return categoryAliases[key] || "reasoning";
 }
 
-function collectMetadata(event) {
-  const reserved = new Set(Object.values(fieldAliases).flat());
-  const mappedMetadata = readField(event, "metadata");
+function collectMetadata(event, fieldMapping = null) {
+  const reserved = new Set(fieldMapping ? Object.values(fieldMapping).filter(Boolean) : Object.values(fieldAliases).flat());
+  const mappedMetadata = readField(event, "metadata", fieldMapping);
   const metadata = { ...(isPlainObject(mappedMetadata) ? mappedMetadata : {}) };
   Object.entries(event).forEach(([key, value]) => {
     if (!reserved.has(key)) metadata[key] = value;
   });
   return metadata;
+}
+
+function readPath(source, path) {
+  if (!path) return undefined;
+  return String(path)
+    .split(".")
+    .reduce((value, segment) => (value == null ? undefined : value[segment]), source);
 }
 
 function isPlainObject(value) {
@@ -482,8 +548,8 @@ function parseTime(value, fallback) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
-function loadTrace(rawEvents, name) {
-  events = normalizeEvents(rawEvents);
+function loadTrace(rawEvents, name, fieldMapping = null) {
+  events = normalizeEvents(rawEvents, fieldMapping);
   if (events.length < 1) throw new Error("至少需要一个有效事件。");
   selectedIndex = 0;
   hoverIndex = -1;
@@ -493,6 +559,98 @@ function loadTrace(rawEvents, name) {
   updateStats();
   updateDetails(events[0]);
   resizeCanvas();
+}
+
+function prepareTraceMapping(rawEvents, name, shouldAutoApply = false) {
+  pendingRawEvents = rawEvents;
+  pendingTraceName = name;
+  discoveredFields = discoverFields(rawEvents);
+  renderMappingPanel();
+
+  if (shouldAutoApply) {
+    applyCurrentMapping();
+    return;
+  }
+
+  trackName.textContent = name;
+  trackMeta.textContent = "请选择字段映射后渲染";
+  emptyState.hidden = false;
+}
+
+function discoverFields(rawEvents) {
+  const fields = new Set();
+  rawEvents.slice(0, 50).forEach((event) => {
+    collectPaths(event, "", fields, 2);
+  });
+  return Array.from(fields).sort((a, b) => a.localeCompare(b));
+}
+
+function collectPaths(value, prefix, fields, depth) {
+  if (!isPlainObject(value) || depth < 0) return;
+  Object.entries(value).forEach(([key, child]) => {
+    const path = prefix ? `${prefix}.${key}` : key;
+    fields.add(path);
+    if (isPlainObject(child)) collectPaths(child, path, fields, depth - 1);
+  });
+}
+
+function renderMappingPanel() {
+  const scheme = visualizationSchemes[schemeSelect.value] || visualizationSchemes.event_flow;
+  mappingPanel.hidden = false;
+  mappingSummary.textContent = `${scheme.description} 已识别 ${discoveredFields.length} 个字段，带 * 的字段必须映射。`;
+  mappingRows.innerHTML = scheme.fields.map((field) => renderMappingRow(field)).join("");
+}
+
+function renderMappingRow(field) {
+  const guessedField = guessSourceField(field.key);
+  const options = [
+    `<option value="">不映射</option>`,
+    ...discoveredFields.map((sourceField) => {
+      const selected = sourceField === guessedField ? " selected" : "";
+      return `<option value="${escapeHtml(sourceField)}"${selected}>${escapeHtml(sourceField)}</option>`;
+    })
+  ].join("");
+
+  return `
+    <label class="mapping-row">
+      <span>${escapeHtml(field.label)}${field.required ? " *" : ""}</span>
+      <select data-field="${escapeHtml(field.key)}" data-required="${field.required ? "true" : "false"}">
+        ${options}
+      </select>
+    </label>
+  `;
+}
+
+function guessSourceField(canonicalName) {
+  const aliases = fieldAliases[canonicalName] || [canonicalName];
+  return aliases.find((alias) => discoveredFields.includes(alias)) || "";
+}
+
+function readCurrentMapping() {
+  const mapping = {};
+  mappingRows.querySelectorAll("select[data-field]").forEach((select) => {
+    if (select.value) mapping[select.dataset.field] = select.value;
+  });
+  return mapping;
+}
+
+function validateMapping() {
+  const missing = [];
+  mappingRows.querySelectorAll("select[data-field]").forEach((select) => {
+    if (select.dataset.required === "true" && !select.value) {
+      missing.push(select.closest(".mapping-row").querySelector("span").textContent.replace(" *", ""));
+    }
+  });
+  return missing;
+}
+
+function applyCurrentMapping() {
+  const missing = validateMapping();
+  if (missing.length) {
+    alert(`请先映射必要字段：${missing.join("、")}`);
+    return;
+  }
+  loadTrace(pendingRawEvents, pendingTraceName, readCurrentMapping());
 }
 
 function resizeCanvas() {
@@ -748,9 +906,14 @@ function escapeHtml(value) {
 function clearTrace() {
   events = [];
   positioned = [];
+  pendingRawEvents = [];
+  pendingTraceName = "";
+  discoveredFields = [];
   hoverIndex = -1;
   selectedIndex = 0;
   fileInput.value = "";
+  mappingPanel.hidden = true;
+  mappingRows.innerHTML = "";
   trackName.textContent = "未加载运行轨迹";
   trackMeta.textContent = "等待加载运行数据";
   emptyState.hidden = false;
@@ -763,7 +926,7 @@ function clearTrace() {
 async function handleFile(file) {
   const text = await file.text();
   const rawEvents = parseTrace(text);
-  loadTrace(rawEvents, file.name);
+  prepareTraceMapping(rawEvents, file.name);
 }
 
 function stopPlayback() {
@@ -784,13 +947,20 @@ fileInput.addEventListener("change", async (event) => {
 
 loadSampleBtn.addEventListener("click", () => {
   const sample = sampleTraces[sampleSelect.value] || sampleTraces.debug;
-  loadTrace(sample.events, sample.name);
+  prepareTraceMapping(sample.events, sample.name, true);
 });
 
 clearBtn.addEventListener("click", clearTrace);
 
+applyMappingBtn.addEventListener("click", applyCurrentMapping);
+
 [colorMode, showLabels, showGrid, timeSlider].forEach((control) => {
   control.addEventListener("input", draw);
+});
+
+schemeSelect.addEventListener("change", () => {
+  if (!pendingRawEvents.length) return;
+  renderMappingPanel();
 });
 
 playBtn.addEventListener("click", () => {
@@ -849,9 +1019,9 @@ canvas.addEventListener("mouseleave", () => {
 
 sampleSelect.addEventListener("change", () => {
   const sample = sampleTraces[sampleSelect.value] || sampleTraces.debug;
-  loadTrace(sample.events, sample.name);
+  prepareTraceMapping(sample.events, sample.name, true);
 });
 
 window.addEventListener("resize", resizeCanvas);
 
-loadTrace(sampleTraces.debug.events, sampleTraces.debug.name);
+prepareTraceMapping(sampleTraces.debug.events, sampleTraces.debug.name, true);

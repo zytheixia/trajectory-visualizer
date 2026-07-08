@@ -144,6 +144,44 @@ button.secondary {
   width: 160px;
 }
 
+.mapping-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.mapping-panel[hidden] {
+  display: none;
+}
+
+.mapping-panel p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.mapping-rows {
+  display: grid;
+  gap: 8px;
+}
+
+.mapping-row {
+  display: grid;
+  gap: 5px;
+}
+
+.mapping-row span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mapping-row select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  padding: 8px;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

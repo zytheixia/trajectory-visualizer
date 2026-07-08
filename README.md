@@ -15,7 +15,7 @@ npm run dev
 
 ## 支持格式
 
-支持 JSON 数组、包含 `events` / `trace` / `steps` / `nodes` 数组的 JSON 对象，以及 JSONL。事件字段采用“核心字段 + 扩展字段”的方式：可视化只依赖少量核心字段，其余字段会进入节点详情的扩展区。
+支持 JSON 数组、包含 `events` / `trace` / `steps` / `nodes` 数组的 JSON 对象，以及 JSONL。工具不会要求外部项目使用固定字段名；上传后会扫描实际字段，再由用户把数据字段映射到当前展示方案需要的标准字段。
 
 ```json
 {
@@ -44,7 +44,15 @@ npm run dev
 }
 ```
 
-核心字段：
+## 字段映射
+
+每种展示方案都有自己的标准字段和必要字段：
+
+- `事件流`: 必须映射 `节点类型`
+- `工具时间线`: 必须映射 `工具/动作名称`、`执行状态`
+- `LLM 调用链`: 必须映射 `调用名称`、`节点类型`
+
+通用标准字段：
 
 - `type`: 节点真实类型，例如 `user`、`planning`、`llm_call`、`tool_call`、`test_run`、`error`
 - `category`: 展示泳道，可选 `input`、`reasoning`、`execution`、`observation`、`failure`
@@ -55,7 +63,7 @@ npm run dev
 - `status`: `success`、`running`、`failed`、`skipped`
 - `metadata`: 扩展字段对象，适合放 model、tokens、cost、command、exit_code、url、trace_id 等
 
-字段别名映射：
+前端会用下面的别名做默认推荐，但最终以用户在映射面板里的选择为准：
 
 - `id`: `id`、`event_id`、`node_id`、`step_id`、`span_id`
 - `type`: `type`、`role`、`kind`、`event_type`、`node_type`

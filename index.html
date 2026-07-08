@@ -43,6 +43,14 @@
         <section class="panel">
           <h2>视图</h2>
           <label class="control-line">
+            <span>展示方案</span>
+            <select id="schemeSelect">
+              <option value="event_flow">事件流</option>
+              <option value="tool_timeline">工具时间线</option>
+              <option value="llm_trace">LLM 调用链</option>
+            </select>
+          </label>
+          <label class="control-line">
             <span>着色方式</span>
             <select id="colorMode">
               <option value="type">按类型</option>
@@ -58,6 +66,13 @@
             <span>网格</span>
             <input id="showGrid" type="checkbox" checked />
           </label>
+        </section>
+
+        <section id="mappingPanel" class="panel mapping-panel" hidden>
+          <h2>字段映射</h2>
+          <p id="mappingSummary" class="muted">上传数据后选择字段对应关系。</p>
+          <div id="mappingRows" class="mapping-rows"></div>
+          <button id="applyMappingBtn" type="button">应用映射</button>
         </section>
 
         <section class="panel stats-panel">
@@ -78,12 +93,11 @@
         </section>
 
         <section class="panel">
-          <h2>格式</h2>
-          <pre class="format-note">[
-  {"type":"llm_call","category":"reasoning"},
-  {"kind":"function","elapsed_ms":410},
-  {"metadata":{"model":"gpt-5"}}
-]</pre>
+          <h2>接入流程</h2>
+          <pre class="format-note">1. 选择展示方案
+2. 上传 JSON / JSONL
+3. 把你的字段映射到必要字段
+4. 应用映射后查看轨迹</pre>
         </section>
       </aside>
 
