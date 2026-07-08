@@ -43,11 +43,19 @@
         <section class="panel">
           <h2>视图</h2>
           <label class="control-line">
-            <span>展示方案</span>
+            <span>数据方案</span>
             <select id="schemeSelect">
               <option value="event_flow">事件流</option>
               <option value="tool_timeline">工具时间线</option>
               <option value="llm_trace">LLM 调用链</option>
+            </select>
+          </label>
+          <label class="control-line">
+            <span>布局</span>
+            <select id="layoutSelect">
+              <option value="swimlane">泳道</option>
+              <option value="tree">树状分支</option>
+              <option value="interaction">角色交互</option>
             </select>
           </label>
           <label class="control-line">
@@ -94,7 +102,7 @@
 
         <section class="panel">
           <h2>接入流程</h2>
-          <pre class="format-note">1. 选择展示方案
+          <pre class="format-note">1. 选择数据方案和布局
 2. 上传 JSON / JSONL
 3. 把你的字段映射到必要字段
 4. 应用映射后查看轨迹</pre>

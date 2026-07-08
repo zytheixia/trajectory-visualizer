@@ -5,6 +5,7 @@ const sampleSelect = document.querySelector("#sampleSelect");
 const loadSampleBtn = document.querySelector("#loadSampleBtn");
 const clearBtn = document.querySelector("#clearBtn");
 const schemeSelect = document.querySelector("#schemeSelect");
+const layoutSelect = document.querySelector("#layoutSelect");
 const colorMode = document.querySelector("#colorMode");
 const showLabels = document.querySelector("#showLabels");
 const showGrid = document.querySelector("#showGrid");
@@ -79,7 +80,9 @@ const fieldAliases = {
   time: ["time", "timestamp", "started_at", "created_at", "ts"],
   duration: ["duration", "duration_ms", "elapsed_ms", "latency_ms"],
   status: ["status", "outcome", "state"],
-  metadata: ["metadata", "meta", "attributes", "extra"]
+  metadata: ["metadata", "meta", "attributes", "extra"],
+  parent: ["parent", "parent_id", "parentId", "source", "from", "prev"],
+  actor: ["actor", "speaker", "participant", "owner", "agent_name", "role"]
 };
 
 const statusColors = {
@@ -112,6 +115,8 @@ const visualizationSchemes = {
       { key: "duration", label: "耗时", required: false },
       { key: "status", label: "状态", required: false },
       { key: "id", label: "节点 ID", required: false },
+      { key: "parent", label: "父节点/来源", required: false },
+      { key: "actor", label: "角色/参与方", required: false },
       { key: "metadata", label: "扩展字段对象", required: false }
     ]
   },
@@ -126,6 +131,8 @@ const visualizationSchemes = {
       { key: "content", label: "输入/输出摘要", required: false },
       { key: "type", label: "节点类型", required: false },
       { key: "id", label: "调用 ID", required: false },
+      { key: "parent", label: "父节点/来源", required: false },
+      { key: "actor", label: "执行方", required: false },
       { key: "metadata", label: "扩展字段对象", required: false }
     ]
   },
@@ -140,6 +147,8 @@ const visualizationSchemes = {
       { key: "status", label: "状态", required: false },
       { key: "content", label: "提示/结果摘要", required: false },
       { key: "metadata", label: "模型/token/cost 字段", required: false },
+      { key: "parent", label: "父节点/来源", required: false },
+      { key: "actor", label: "调用方/模型", required: false },
       { key: "id", label: "调用 ID", required: false }
     ]
   }
@@ -147,6 +156,10 @@ const visualizationSchemes = {
 
 function currentSchemeKey() {
   return schemeSelect.value || "event_flow";
+}
+
+function currentLayoutKey() {
+  return layoutSelect.value || "swimlane";
 }
 
 function activeLanes() {
@@ -186,7 +199,8 @@ const sampleTraces = {
         name: "用户请求",
         content: "分析 anno-runner 的失败测试，并给出修复方案。",
         time: "2026-07-08T09:00:00Z",
-        status: "success"
+        status: "success",
+        actor: "User"
       },
       {
         id: "evt-2",
@@ -197,6 +211,8 @@ const sampleTraces = {
         time: "2026-07-08T09:00:08Z",
         duration: 12,
         status: "success",
+        parent_id: "evt-1",
+        actor: "Agent",
         metadata: {
           model: "gpt-5-codex",
           tokens: 428
@@ -211,6 +227,8 @@ const sampleTraces = {
         time: "2026-07-08T09:00:24Z",
         duration: 3,
         status: "success",
+        parent_id: "evt-2",
+        actor: "Shell",
         metadata: {
           command: "rg failing assertion",
           cwd: "/home/zyt/projects/anno-runner"
@@ -222,7 +240,9 @@ const sampleTraces = {
         name: "观察",
         content: "发现 parser 对缺失 optional 字段处理不一致。",
         time: "2026-07-08T09:00:32Z",
-        status: "success"
+        status: "success",
+        parent_id: "evt-3",
+        actor: "Agent"
       },
       {
         id: "evt-5",
@@ -233,6 +253,8 @@ const sampleTraces = {
         time: "2026-07-08T09:00:46Z",
         duration: 8,
         status: "failed",
+        parent_id: "evt-4",
+        actor: "Pytest",
         metadata: {
           command: "pytest tests/test_harbor_parser.py::test_missing_optional_fields",
           exit_code: 1
@@ -244,7 +266,9 @@ const sampleTraces = {
         name: "断言失败",
         content: "expected empty list, got None。",
         time: "2026-07-08T09:00:55Z",
-        status: "failed"
+        status: "failed",
+        parent_id: "evt-5",
+        actor: "Pytest"
       },
       {
         id: "evt-7",
@@ -255,6 +279,8 @@ const sampleTraces = {
         time: "2026-07-08T09:01:11Z",
         duration: 45,
         status: "success",
+        parent_id: "evt-5",
+        actor: "Agent",
         files_changed: ["packages/harbor_ingest/parser.py", "tests/test_harbor_parser.py"]
       },
       {
@@ -266,6 +292,8 @@ const sampleTraces = {
         time: "2026-07-08T09:02:02Z",
         duration: 14,
         status: "success",
+        parent_id: "evt-7",
+        actor: "Pytest",
         metadata: {
           command: "pytest tests/test_harbor_parser.py",
           exit_code: 0
@@ -278,7 +306,9 @@ const sampleTraces = {
         name: "总结",
         content: "报告修改点、验证结果和剩余风险。",
         time: "2026-07-08T09:02:24Z",
-        status: "success"
+        status: "success",
+        parent_id: "evt-8",
+        actor: "Agent"
       }
     ]
   },
@@ -527,6 +557,8 @@ function normalizeEvents(rawEvents, fieldMapping = null) {
         rawTime: readField(event, "time", fieldMapping) || "",
         durationMs,
         status,
+        parentId: readField(event, "parent", fieldMapping) || "",
+        actor: readField(event, "actor", fieldMapping) || inferActor(type, category),
         metadata: collectMetadata(event, fieldMapping),
         payload: event
       };
@@ -544,6 +576,14 @@ function normalizeType(value) {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "_");
+}
+
+function inferActor(type, category) {
+  if (category === "input") return "User";
+  if (category === "execution") return "Tool";
+  if (category === "failure") return "Error";
+  if (/llm|model|assistant|agent|thought|plan/i.test(type)) return "Agent";
+  return typeLabel(category);
 }
 
 function readField(event, canonicalName, fieldMapping = null) {
@@ -710,6 +750,12 @@ function resizeCanvas() {
 }
 
 function layoutEvents() {
+  if (currentLayoutKey() === "tree") return layoutTree();
+  if (currentLayoutKey() === "interaction") return layoutInteraction();
+  return layoutSwimlane();
+}
+
+function layoutSwimlane() {
   const lanes = activeLanes();
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
@@ -739,6 +785,72 @@ function layoutEvents() {
   });
 }
 
+function layoutTree() {
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  const left = 96;
+  const right = 72;
+  const top = 64;
+  const bottom = 54;
+  const byId = new Map(events.map((event, index) => [String(event.id), { event, index }]));
+  const depths = new Map();
+
+  function depthFor(event, seen = new Set()) {
+    if (!event.parentId || !byId.has(String(event.parentId)) || seen.has(event.id)) return 0;
+    seen.add(event.id);
+    const parent = byId.get(String(event.parentId)).event;
+    return depthFor(parent, seen) + 1;
+  }
+
+  events.forEach((event) => depths.set(event.id, depthFor(event)));
+  const maxDepth = Math.max(...depths.values(), 1);
+  const rowsByDepth = new Map();
+  events.forEach((event) => {
+    const depth = depths.get(event.id) || 0;
+    rowsByDepth.set(depth, [...(rowsByDepth.get(depth) || []), event.id]);
+  });
+
+  return events.map((event, index) => {
+    const depth = depths.get(event.id) || 0;
+    const siblings = rowsByDepth.get(depth) || [];
+    const row = siblings.indexOf(event.id);
+    const x = left + (depth / maxDepth) * Math.max(260, width - left - right);
+    const y = top + ((row + 1) / (siblings.length + 1)) * Math.max(220, height - top - bottom);
+    return {
+      ...event,
+      displayLane: resolveSchemeLane(event),
+      treeDepth: depth,
+      x,
+      y,
+      radius: event.category === "failure" || event.status === "failed" ? 13 : 10
+    };
+  });
+}
+
+function layoutInteraction() {
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  const left = 88;
+  const right = 72;
+  const top = 72;
+  const bottom = 56;
+  const actors = Array.from(new Set(events.map((event) => event.actor || inferActor(event.type, event.category))));
+  const firstTime = events[0]?.time ?? 0;
+  const lastTime = events.at(-1)?.time ?? firstTime + events.length;
+  const duration = Math.max(lastTime - firstTime, events.length - 1, 1);
+
+  return events.map((event, index) => {
+    const actorIndex = Math.max(actors.indexOf(event.actor), 0);
+    return {
+      ...event,
+      displayLane: event.actor,
+      x: left + (actorIndex / Math.max(actors.length - 1, 1)) * Math.max(280, width - left - right),
+      y: top + ((event.time - firstTime) / duration) * Math.max(240, height - top - bottom),
+      radius: event.category === "failure" || event.status === "failed" ? 13 : 10
+    };
+  });
+}
+
 function draw() {
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
@@ -756,6 +868,18 @@ function draw() {
 }
 
 function drawBackground(width, height) {
+  if (currentLayoutKey() === "tree") {
+    drawTreeBackground(width, height);
+    return;
+  }
+  if (currentLayoutKey() === "interaction") {
+    drawInteractionBackground(width, height);
+    return;
+  }
+  drawSwimlaneBackground(width, height);
+}
+
+function drawSwimlaneBackground(width, height) {
   const lanes = activeLanes();
   ctx.fillStyle = "#f6f8fb";
   ctx.fillRect(0, 0, width, height);
@@ -783,24 +907,67 @@ function drawBackground(width, height) {
   }
 }
 
+function drawTreeBackground(width, height) {
+  ctx.fillStyle = "#f6f8fb";
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = "#475569";
+  ctx.font = "700 12px Inter, system-ui, sans-serif";
+  ctx.fillText("Root", 28, 42);
+  ctx.fillText("Branches", 96, 42);
+
+  if (!showGrid.checked) return;
+  ctx.strokeStyle = "rgba(148, 163, 184, 0.18)";
+  for (let x = 96; x < width - 48; x += 120) {
+    ctx.beginPath();
+    ctx.moveTo(x, 56);
+    ctx.lineTo(x, height - 32);
+    ctx.stroke();
+  }
+}
+
+function drawInteractionBackground(width, height) {
+  ctx.fillStyle = "#f6f8fb";
+  ctx.fillRect(0, 0, width, height);
+  const actors = Array.from(new Set(events.map((event) => event.actor || inferActor(event.type, event.category))));
+  actors.forEach((actor, index) => {
+    const x = 88 + (index / Math.max(actors.length - 1, 1)) * Math.max(280, width - 160);
+    ctx.strokeStyle = "rgba(148, 163, 184, 0.28)";
+    ctx.beginPath();
+    ctx.moveTo(x, 54);
+    ctx.lineTo(x, height - 32);
+    ctx.stroke();
+    ctx.fillStyle = "#334155";
+    ctx.font = "700 12px Inter, system-ui, sans-serif";
+    ctx.fillText(String(actor), x - 24, 36);
+  });
+}
+
 function drawConnections(visible) {
   ctx.lineWidth = 2;
   ctx.lineCap = "round";
-  for (let index = 1; index < visible.length; index += 1) {
-    const previous = visible[index - 1];
+  const byId = new Map(visible.map((event) => [String(event.id), event]));
+  for (let index = 0; index < visible.length; index += 1) {
     const current = visible[index];
+    const previous = current.parentId && byId.has(String(current.parentId)) ? byId.get(String(current.parentId)) : visible[index - 1];
+    if (!previous) continue;
     ctx.strokeStyle = getConnectionColor(current, index / Math.max(visible.length - 1, 1));
     ctx.beginPath();
     ctx.moveTo(previous.x, previous.y);
-    const midX = previous.x + (current.x - previous.x) * 0.5;
-    ctx.bezierCurveTo(midX, previous.y, midX, current.y, current.x, current.y);
+    if (currentLayoutKey() === "tree") {
+      const midX = previous.x + (current.x - previous.x) * 0.55;
+      ctx.bezierCurveTo(midX, previous.y, midX, current.y, current.x, current.y);
+    } else {
+      const midX = previous.x + (current.x - previous.x) * 0.5;
+      ctx.bezierCurveTo(midX, previous.y, midX, current.y, current.x, current.y);
+    }
     ctx.stroke();
   }
 }
 
 function drawEvent(event, isActive) {
   const lanes = activeLanes();
-  const lane = lanes.find((item) => item.key === event.displayLane) || lanes[1];
+  const lane = lanes.find((item) => item.key === event.displayLane) || lanes.find((item) => item.key === resolveSchemeLane(event)) || lanes[1];
+  const categoryLane = laneSchemes.event_flow.find((item) => item.key === event.category);
   const statusColor = statusColors[event.status] || lane.color;
   ctx.fillStyle = "white";
   ctx.strokeStyle = isActive ? "#111827" : statusColor;
@@ -810,7 +977,7 @@ function drawEvent(event, isActive) {
   ctx.fill();
   ctx.stroke();
 
-  ctx.fillStyle = statusColor;
+  ctx.fillStyle = currentLayoutKey() === "interaction" && categoryLane ? categoryLane.color : statusColor;
   ctx.beginPath();
   ctx.arc(event.x, event.y, Math.max(4, event.radius - 6), 0, Math.PI * 2);
   ctx.fill();
@@ -904,6 +1071,8 @@ function updateDetails(event) {
       <div><dt>时间</dt><dd>${escapeHtml(formatTime(event.time))}</dd></div>
       <div><dt>耗时</dt><dd>${escapeHtml(formatDuration(event.durationMs))}</dd></div>
       <div><dt>状态</dt><dd>${escapeHtml(event.status)}</dd></div>
+      <div><dt>角色</dt><dd>${escapeHtml(event.actor || "-")}</dd></div>
+      <div><dt>父节点</dt><dd>${escapeHtml(event.parentId || "-")}</dd></div>
       <div><dt>ID</dt><dd>${escapeHtml(event.id)}</dd></div>
     </dl>
     <pre class="event-content">${escapeHtml(String(event.content || "无内容"))}</pre>
@@ -1026,6 +1195,10 @@ applyMappingBtn.addEventListener("click", applyCurrentMapping);
 
 [colorMode, showLabels, showGrid, timeSlider].forEach((control) => {
   control.addEventListener("input", draw);
+});
+
+layoutSelect.addEventListener("change", () => {
+  resizeCanvas();
 });
 
 schemeSelect.addEventListener("change", () => {

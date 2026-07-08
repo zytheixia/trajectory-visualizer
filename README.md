@@ -15,7 +15,7 @@ npm run dev
 
 ## 支持格式
 
-支持 JSON 数组、包含 `events` / `trace` / `steps` / `nodes` 数组的 JSON 对象，以及 JSONL。工具不会要求外部项目使用固定字段名；上传后会扫描实际字段，再由用户把数据字段映射到当前展示方案需要的标准字段。
+支持 JSON 数组、包含 `events` / `trace` / `steps` / `nodes` 数组的 JSON 对象，以及 JSONL。工具不会要求外部项目使用固定字段名；上传后会扫描实际字段，再由用户把数据字段映射到当前数据方案需要的标准字段。
 
 ```json
 {
@@ -44,13 +44,21 @@ npm run dev
 }
 ```
 
-## 字段映射
+## 数据方案与字段映射
 
-每种展示方案都有自己的标准字段和必要字段：
+每种数据方案都有自己的标准字段和必要字段：
 
 - `事件流`: 必须映射 `节点类型`
 - `工具时间线`: 必须映射 `工具/动作名称`、`执行状态`
 - `LLM 调用链`: 必须映射 `调用名称`、`节点类型`
+
+## 布局模式
+
+布局决定同一批节点如何展示：
+
+- `泳道`: 按 Input / Reasoning / Execution / Observation / Failure 等泳道展示
+- `树状分支`: 按 `parent` / `parent_id` 关系展示分支，适合断点、回滚、重试和多路径执行
+- `角色交互`: 按 `actor` / `speaker` / `participant` 分列，适合多 agent、多工具、多角色之间的交互
 
 通用标准字段：
 
@@ -62,6 +70,8 @@ npm run dev
 - `duration`: 秒；也支持 `duration_ms` / `elapsed_ms`
 - `status`: `success`、`running`、`failed`、`skipped`
 - `metadata`: 扩展字段对象，适合放 model、tokens、cost、command、exit_code、url、trace_id 等
+- `parent`: 父节点或来源节点，用于树状分支布局
+- `actor`: 节点所属角色或参与方，用于角色交互布局
 
 前端会用下面的别名做默认推荐，但最终以用户在映射面板里的选择为准：
 
@@ -74,6 +84,8 @@ npm run dev
 - `duration`: `duration`、`duration_ms`、`elapsed_ms`、`latency_ms`
 - `status`: `status`、`outcome`、`state`
 - `metadata`: `metadata`、`meta`、`attributes`、`extra`
+- `parent`: `parent`、`parent_id`、`parentId`、`source`、`from`、`prev`
+- `actor`: `actor`、`speaker`、`participant`、`owner`、`agent_name`、`role`
 
 未识别的顶层字段不会丢弃，会自动合并到 `metadata` 展示。
 
