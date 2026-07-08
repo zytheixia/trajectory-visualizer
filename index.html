@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>轨迹可视化工具</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div>
+            <h1>轨迹可视化</h1>
+            <p>CSV / GeoJSON 轨迹分析</p>
+          </div>
+        </div>
+
+        <section class="panel">
+          <h2>数据</h2>
+          <label class="upload-zone" for="fileInput">
+            <input id="fileInput" type="file" accept=".csv,.json,.geojson,application/json,text/csv" />
+            <span>导入轨迹文件</span>
+            <small>CSV: lat,lng,time；GeoJSON: LineString / Point</small>
+          </label>
+          <div class="button-row">
+            <button id="loadSampleBtn" type="button">载入示例</button>
+            <button id="clearBtn" type="button" class="secondary">清空</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>图层</h2>
+          <label class="control-line">
+            <span>着色方式</span>
+            <select id="colorMode">
+              <option value="speed">按速度</option>
+              <option value="time">按时间</option>
+              <option value="solid">单色</option>
+            </select>
+          </label>
+          <label class="control-line">
+            <span>轨迹点</span>
+            <input id="showPoints" type="checkbox" checked />
+          </label>
+          <label class="control-line">
+            <span>网格</span>
+            <input id="showGrid" type="checkbox" checked />
+          </label>
+        </section>
+
+        <section class="panel stats-panel">
+          <h2>统计</h2>
+          <dl id="statsGrid" class="stats-grid">
+            <div><dt>点数</dt><dd>0</dd></div>
+            <div><dt>总距离</dt><dd>0 km</dd></div>
+            <div><dt>耗时</dt><dd>0 min</dd></div>
+            <div><dt>均速</dt><dd>0 km/h</dd></div>
+          </dl>
+        </section>
+
+        <section class="panel">
+          <h2>格式</h2>
+          <pre class="format-note">lat,lng,time
+31.2304,121.4737,2026-07-08T09:00:00Z</pre>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <header class="topbar">
+          <div>
+            <strong id="trackName">示例轨迹</strong>
+            <span id="trackMeta">等待加载数据</span>
+          </div>
+          <div class="legend" id="legend">
+            <span class="legend-low">慢</span>
+            <span class="legend-ramp"></span>
+            <span class="legend-high">快</span>
+          </div>
+        </header>
+
+        <div class="canvas-wrap">
+          <canvas id="trackCanvas"></canvas>
+          <div id="emptyState" class="empty-state">
+            <h2>导入轨迹文件开始分析</h2>
+            <p>支持 CSV、GeoJSON LineString、GeoJSON Point 序列。</p>
+          </div>
+          <div id="tooltip" class="tooltip" hidden></div>
+        </div>
+
+        <footer class="timeline">
+          <button id="playBtn" type="button" aria-label="播放">▶</button>
+          <input id="timeSlider" type="range" min="0" max="100" value="100" />
+          <output id="timeOutput">全部轨迹</output>
+        </footer>
+      </section>
+    </main>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
