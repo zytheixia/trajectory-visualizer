@@ -11,21 +11,31 @@
     },
     {
       "id": "evt-2",
-      "type": "agent",
+      "type": "planning",
+      "category": "reasoning",
       "name": "规划",
       "content": "读取测试输出，定位失败路径，优先复现最小问题。",
       "time": "2026-07-08T09:00:08Z",
       "duration": 12,
-      "status": "success"
+      "status": "success",
+      "metadata": {
+        "model": "gpt-5-codex",
+        "tokens": 428
+      }
     },
     {
       "id": "evt-3",
-      "type": "tool",
+      "type": "shell_command",
+      "category": "execution",
       "name": "rg",
       "content": "搜索 failing assertion 和相关 fixture。",
       "time": "2026-07-08T09:00:24Z",
       "duration": 3,
-      "status": "success"
+      "status": "success",
+      "metadata": {
+        "command": "rg failing assertion",
+        "cwd": "/home/zyt/projects/anno-runner"
+      }
     },
     {
       "id": "evt-4",
@@ -37,12 +47,17 @@
     },
     {
       "id": "evt-5",
-      "type": "tool",
+      "type": "test_run",
+      "category": "execution",
       "name": "pytest",
       "content": "运行 tests/test_harbor_parser.py::test_missing_optional_fields。",
       "time": "2026-07-08T09:00:46Z",
       "duration": 8,
-      "status": "failed"
+      "status": "failed",
+      "metadata": {
+        "command": "pytest tests/test_harbor_parser.py::test_missing_optional_fields",
+        "exit_code": 1
+      }
     },
     {
       "id": "evt-6",
@@ -63,12 +78,17 @@
     },
     {
       "id": "evt-8",
-      "type": "tool",
+      "type": "test_run",
+      "category": "execution",
       "name": "pytest",
       "content": "运行相关测试文件。",
       "time": "2026-07-08T09:02:02Z",
       "duration": 14,
-      "status": "success"
+      "status": "success",
+      "metadata": {
+        "command": "pytest tests/test_harbor_parser.py",
+        "exit_code": 0
+      }
     },
     {
       "id": "evt-9",

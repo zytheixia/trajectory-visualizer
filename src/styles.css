@@ -274,26 +274,6 @@ canvas {
   text-transform: uppercase;
 }
 
-.type-user {
-  background: #2563eb;
-}
-
-.type-agent {
-  background: #7c3aed;
-}
-
-.type-tool {
-  background: #059669;
-}
-
-.type-system {
-  background: #475569;
-}
-
-.type-error {
-  background: #dc2626;
-}
-
 .detail-list {
   display: grid;
   gap: 8px;
@@ -302,7 +282,7 @@ canvas {
 
 .detail-list div {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
+  grid-template-columns: 64px minmax(0, 1fr);
   gap: 8px;
 }
 
@@ -331,6 +311,36 @@ canvas {
   word-break: break-word;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.metadata-section {
+  display: grid;
+  gap: 8px;
+}
+
+.metadata-section h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.metadata-list dd {
+  white-space: pre-wrap;
+}
+
+.payload-details {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.payload-details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.payload-details .event-content {
+  margin-top: 8px;
 }
 
 .timeline {

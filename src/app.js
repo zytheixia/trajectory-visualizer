@@ -17,12 +17,36 @@ const timeSlider = document.querySelector("#timeSlider");
 const timeOutput = document.querySelector("#timeOutput");
 
 const lanes = [
-  { key: "user", label: "User", color: "#2563eb" },
-  { key: "agent", label: "Agent", color: "#7c3aed" },
-  { key: "tool", label: "Tool", color: "#059669" },
-  { key: "system", label: "System", color: "#475569" },
-  { key: "error", label: "Error", color: "#dc2626" }
+  { key: "input", label: "Input", color: "#2563eb" },
+  { key: "reasoning", label: "Reasoning", color: "#7c3aed" },
+  { key: "execution", label: "Execution", color: "#059669" },
+  { key: "observation", label: "Observation", color: "#475569" },
+  { key: "failure", label: "Failure", color: "#dc2626" }
 ];
+
+const categoryAliases = {
+  user: "input",
+  human: "input",
+  request: "input",
+  agent: "reasoning",
+  assistant: "reasoning",
+  thought: "reasoning",
+  reasoning: "reasoning",
+  plan: "reasoning",
+  llm: "reasoning",
+  llm_call: "reasoning",
+  tool: "execution",
+  function: "execution",
+  command: "execution",
+  action: "execution",
+  system: "observation",
+  observation: "observation",
+  result: "observation",
+  error: "failure",
+  exception: "failure",
+  failed: "failure",
+  failure: "failure"
+};
 
 const statusColors = {
   running: "#f59e0b",
@@ -49,21 +73,31 @@ const sampleEvents = [
   },
   {
     id: "evt-2",
-    type: "agent",
+    type: "planning",
+    category: "reasoning",
     name: "规划",
     content: "读取测试输出，定位失败路径，优先复现最小问题。",
     time: "2026-07-08T09:00:08Z",
     duration: 12,
-    status: "success"
+    status: "success",
+    metadata: {
+      model: "gpt-5-codex",
+      tokens: 428
+    }
   },
   {
     id: "evt-3",
-    type: "tool",
+    type: "shell_command",
+    category: "execution",
     name: "rg",
     content: "搜索 failing assertion 和相关 fixture。",
     time: "2026-07-08T09:00:24Z",
     duration: 3,
-    status: "success"
+    status: "success",
+    metadata: {
+      command: "rg failing assertion",
+      cwd: "/home/zyt/projects/anno-runner"
+    }
   },
   {
     id: "evt-4",
@@ -75,7 +109,8 @@ const sampleEvents = [
   },
   {
     id: "evt-5",
-    type: "tool",
+    type: "test_run",
+    category: "execution",
     name: "pytest",
     content: "运行 tests/test_harbor_parser.py::test_missing_optional_fields。",
     time: "2026-07-08T09:00:46Z",
@@ -101,7 +136,8 @@ const sampleEvents = [
   },
   {
     id: "evt-8",
-    type: "tool",
+    type: "test_run",
+    category: "execution",
     name: "pytest",
     content: "运行相关测试文件。",
     time: "2026-07-08T09:02:02Z",
@@ -142,7 +178,9 @@ function parseTrace(text) {
 function normalizeEvents(rawEvents) {
   return rawEvents
     .map((event, index) => {
-      const type = normalizeType(event.type || event.role || event.kind || event.category);
+      const rawType = event.type || event.role || event.kind || event.category || "agent";
+      const type = normalizeType(rawType);
+      const category = normalizeCategory(event.category || event.lane || rawType);
       const time = parseTime(event.time || event.timestamp || event.started_at || event.created_at, index);
       const duration = Number(event.duration ?? event.duration_ms ?? event.elapsed_ms ?? 0);
       const durationMs = Number.isFinite(duration)
@@ -154,14 +192,16 @@ function normalizeEvents(rawEvents) {
       return {
         id: event.id || event.event_id || `event-${index + 1}`,
         type,
-        lane: type,
-        name: event.name || event.title || event.tool || event.action || laneLabel(type),
+        category,
+        lane: category,
+        name: event.name || event.title || event.tool || event.action || typeLabel(type),
         content: event.content || event.message || event.input || event.output || event.summary || "",
         time,
         rawTime: event.time || event.timestamp || "",
         durationMs,
         status,
-        raw: event
+        metadata: collectMetadata(event),
+        payload: event
       };
     })
     .sort((a, b) => a.time - b.time)
@@ -173,13 +213,55 @@ function normalizeEvents(rawEvents) {
 }
 
 function normalizeType(value) {
-  const type = String(value || "").toLowerCase();
-  if (["human", "user", "request"].includes(type)) return "user";
-  if (["assistant", "agent", "thought", "reasoning", "plan"].includes(type)) return "agent";
-  if (["tool", "function", "command", "action"].includes(type)) return "tool";
-  if (["system", "observation", "result"].includes(type)) return "system";
-  if (["error", "exception", "failed", "failure"].includes(type)) return "error";
-  return "agent";
+  return String(value || "agent")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+}
+
+function normalizeCategory(value) {
+  const key = normalizeType(value);
+  return categoryAliases[key] || "reasoning";
+}
+
+function collectMetadata(event) {
+  const reserved = new Set([
+    "id",
+    "event_id",
+    "type",
+    "role",
+    "kind",
+    "category",
+    "lane",
+    "name",
+    "title",
+    "tool",
+    "action",
+    "content",
+    "message",
+    "input",
+    "output",
+    "summary",
+    "time",
+    "timestamp",
+    "started_at",
+    "created_at",
+    "duration",
+    "duration_ms",
+    "elapsed_ms",
+    "status",
+    "outcome",
+    "metadata"
+  ]);
+  const metadata = { ...(isPlainObject(event.metadata) ? event.metadata : {}) };
+  Object.entries(event).forEach(([key, value]) => {
+    if (!reserved.has(key)) metadata[key] = value;
+  });
+  return metadata;
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function parseTime(value, fallback) {
@@ -234,7 +316,7 @@ function layoutEvents() {
       ...event,
       x: Number.isFinite(timeX) ? timeX : fallbackX,
       y: top + Math.max(laneIndex, 0) * laneGap,
-      radius: event.type === "error" || event.status === "failed" ? 13 : 10
+      radius: event.category === "failure" || event.status === "failed" ? 13 : 10
     };
   });
 }
@@ -345,8 +427,8 @@ function hexToRgb(hex) {
 }
 
 function updateStats() {
-  const toolCalls = events.filter((event) => event.type === "tool").length;
-  const failures = events.filter((event) => event.type === "error" || event.status === "failed").length;
+  const toolCalls = events.filter((event) => event.category === "execution").length;
+  const failures = events.filter((event) => event.category === "failure" || event.status === "failed").length;
   const totalDuration = events.reduce((sum, event) => sum + event.durationMs, 0);
   const values = [
     events.length.toLocaleString("zh-CN"),
@@ -370,18 +452,28 @@ function updateDetails(event) {
     return;
   }
 
+  const metadataHtml = renderMetadata(event.metadata);
+  const payloadHtml = escapeHtml(JSON.stringify(event.payload, null, 2));
+
   detailPanel.innerHTML = `
     <div class="detail-heading">
-      <span class="type-pill type-${event.type}">${laneLabel(event.type)}</span>
+      <span class="type-pill" style="background:${categoryColor(event.category)}">${escapeHtml(typeLabel(event.type))}</span>
       <strong>${escapeHtml(event.name)}</strong>
     </div>
     <dl class="detail-list">
+      <div><dt>类型</dt><dd>${escapeHtml(event.type)}</dd></div>
+      <div><dt>分类</dt><dd>${escapeHtml(categoryLabel(event.category))}</dd></div>
       <div><dt>时间</dt><dd>${escapeHtml(formatTime(event.time))}</dd></div>
       <div><dt>耗时</dt><dd>${escapeHtml(formatDuration(event.durationMs))}</dd></div>
       <div><dt>状态</dt><dd>${escapeHtml(event.status)}</dd></div>
       <div><dt>ID</dt><dd>${escapeHtml(event.id)}</dd></div>
     </dl>
     <pre class="event-content">${escapeHtml(String(event.content || "无内容"))}</pre>
+    ${metadataHtml}
+    <details class="payload-details">
+      <summary>原始事件</summary>
+      <pre class="event-content">${payloadHtml}</pre>
+    </details>
   `;
 }
 
@@ -389,8 +481,39 @@ function updateTimelineLabel(event) {
   timeOutput.textContent = event ? `${event.index + 1}/${events.length} ${event.name}` : "未播放";
 }
 
-function laneLabel(type) {
-  return lanes.find((lane) => lane.key === type)?.label || "Agent";
+function categoryLabel(category) {
+  return lanes.find((lane) => lane.key === category)?.label || "Reasoning";
+}
+
+function typeLabel(type) {
+  return String(type || "agent")
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function categoryColor(category) {
+  return lanes.find((lane) => lane.key === category)?.color || lanes[1].color;
+}
+
+function renderMetadata(metadata) {
+  const entries = Object.entries(metadata || {});
+  if (!entries.length) return "";
+
+  const rows = entries
+    .map(([key, value]) => {
+      const rendered = isPlainObject(value) || Array.isArray(value) ? JSON.stringify(value, null, 2) : String(value);
+      return `<div><dt>${escapeHtml(key)}</dt><dd>${escapeHtml(rendered)}</dd></div>`;
+    })
+    .join("");
+
+  return `
+    <section class="metadata-section">
+      <h3>扩展字段</h3>
+      <dl class="detail-list metadata-list">${rows}</dl>
+    </section>
+  `;
 }
 
 function formatDuration(ms) {
@@ -489,7 +612,8 @@ canvas.addEventListener("mousemove", (event) => {
     tooltip.style.top = `${Math.max(y - 18, 12)}px`;
     tooltip.innerHTML = `
       <strong>${escapeHtml(item.name)}</strong><br>
-      类型：${escapeHtml(laneLabel(item.type))}<br>
+      类型：${escapeHtml(typeLabel(item.type))}<br>
+      分类：${escapeHtml(categoryLabel(item.category))}<br>
       状态：${escapeHtml(item.status)}<br>
       耗时：${escapeHtml(formatDuration(item.durationMs))}
     `;
