@@ -1,0 +1,82 @@
+{
+  "run_id": "demo-agent-run",
+  "events": [
+    {
+      "id": "evt-1",
+      "type": "user",
+      "name": "用户请求",
+      "content": "分析 anno-runner 的失败测试，并给出修复方案。",
+      "time": "2026-07-08T09:00:00Z",
+      "status": "success"
+    },
+    {
+      "id": "evt-2",
+      "type": "agent",
+      "name": "规划",
+      "content": "读取测试输出，定位失败路径，优先复现最小问题。",
+      "time": "2026-07-08T09:00:08Z",
+      "duration": 12,
+      "status": "success"
+    },
+    {
+      "id": "evt-3",
+      "type": "tool",
+      "name": "rg",
+      "content": "搜索 failing assertion 和相关 fixture。",
+      "time": "2026-07-08T09:00:24Z",
+      "duration": 3,
+      "status": "success"
+    },
+    {
+      "id": "evt-4",
+      "type": "agent",
+      "name": "观察",
+      "content": "发现 parser 对缺失 optional 字段处理不一致。",
+      "time": "2026-07-08T09:00:32Z",
+      "status": "success"
+    },
+    {
+      "id": "evt-5",
+      "type": "tool",
+      "name": "pytest",
+      "content": "运行 tests/test_harbor_parser.py::test_missing_optional_fields。",
+      "time": "2026-07-08T09:00:46Z",
+      "duration": 8,
+      "status": "failed"
+    },
+    {
+      "id": "evt-6",
+      "type": "error",
+      "name": "断言失败",
+      "content": "expected empty list, got None。",
+      "time": "2026-07-08T09:00:55Z",
+      "status": "failed"
+    },
+    {
+      "id": "evt-7",
+      "type": "agent",
+      "name": "修复",
+      "content": "统一 normalize 阶段的默认值，并补充回归测试。",
+      "time": "2026-07-08T09:01:11Z",
+      "duration": 45,
+      "status": "success"
+    },
+    {
+      "id": "evt-8",
+      "type": "tool",
+      "name": "pytest",
+      "content": "运行相关测试文件。",
+      "time": "2026-07-08T09:02:02Z",
+      "duration": 14,
+      "status": "success"
+    },
+    {
+      "id": "evt-9",
+      "type": "agent",
+      "name": "总结",
+      "content": "报告修改点、验证结果和剩余风险。",
+      "time": "2026-07-08T09:02:24Z",
+      "status": "success"
+    }
+  ]
+}

@@ -74,6 +74,7 @@ button.secondary {
 .brand p,
 .topbar span,
 .format-note,
+.muted,
 .upload-zone small {
   color: var(--muted);
 }
@@ -204,7 +205,7 @@ button.secondary {
   width: 130px;
   height: 10px;
   border-radius: 999px;
-  background: linear-gradient(90deg, #22c55e, #facc15, #ef4444);
+  background: linear-gradient(90deg, #2563eb, #7c3aed, #16a34a);
 }
 
 .canvas-wrap {
@@ -250,6 +251,86 @@ canvas {
   font-size: 12px;
   line-height: 1.5;
   pointer-events: none;
+}
+
+.detail-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.detail-heading {
+  display: grid;
+  gap: 8px;
+}
+
+.type-pill {
+  width: fit-content;
+  border-radius: 999px;
+  color: white;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  padding: 4px 9px;
+  text-transform: uppercase;
+}
+
+.type-user {
+  background: #2563eb;
+}
+
+.type-agent {
+  background: #7c3aed;
+}
+
+.type-tool {
+  background: #059669;
+}
+
+.type-system {
+  background: #475569;
+}
+
+.type-error {
+  background: #dc2626;
+}
+
+.detail-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.detail-list div {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.detail-list dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.detail-list dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.event-content {
+  max-height: 170px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #243044;
+  margin: 0;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .timeline {

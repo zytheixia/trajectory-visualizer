@@ -2,7 +2,7 @@
   "name": "trajectory-visualizer",
   "version": "0.1.0",
   "private": true,
-  "description": "A dependency-free trajectory visualization tool for CSV and GeoJSON tracks.",
+  "description": "A dependency-free visualization tool for agent execution traces.",
   "scripts": {
     "dev": "python3 -m http.server 5173",
     "start": "python3 -m http.server 5173"

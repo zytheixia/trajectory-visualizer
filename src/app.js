@@ -4,9 +4,10 @@ const fileInput = document.querySelector("#fileInput");
 const loadSampleBtn = document.querySelector("#loadSampleBtn");
 const clearBtn = document.querySelector("#clearBtn");
 const colorMode = document.querySelector("#colorMode");
-const showPoints = document.querySelector("#showPoints");
+const showLabels = document.querySelector("#showLabels");
 const showGrid = document.querySelector("#showGrid");
 const statsGrid = document.querySelector("#statsGrid");
+const detailPanel = document.querySelector("#detailPanel");
 const trackName = document.querySelector("#trackName");
 const trackMeta = document.querySelector("#trackMeta");
 const emptyState = document.querySelector("#emptyState");
@@ -15,130 +16,190 @@ const playBtn = document.querySelector("#playBtn");
 const timeSlider = document.querySelector("#timeSlider");
 const timeOutput = document.querySelector("#timeOutput");
 
-let points = [];
-let projected = [];
+const lanes = [
+  { key: "user", label: "User", color: "#2563eb" },
+  { key: "agent", label: "Agent", color: "#7c3aed" },
+  { key: "tool", label: "Tool", color: "#059669" },
+  { key: "system", label: "System", color: "#475569" },
+  { key: "error", label: "Error", color: "#dc2626" }
+];
+
+const statusColors = {
+  running: "#f59e0b",
+  success: "#16a34a",
+  failed: "#dc2626",
+  error: "#dc2626",
+  skipped: "#64748b"
+};
+
+let events = [];
+let positioned = [];
 let hoverIndex = -1;
+let selectedIndex = 0;
 let playTimer = null;
 
-const sampleTrack = [
-  ["lat", "lng", "time"],
-  [31.2304, 121.4737, "2026-07-08T09:00:00Z"],
-  [31.2321, 121.4779, "2026-07-08T09:04:00Z"],
-  [31.2354, 121.4818, "2026-07-08T09:09:00Z"],
-  [31.2398, 121.4863, "2026-07-08T09:16:00Z"],
-  [31.2442, 121.4928, "2026-07-08T09:24:00Z"],
-  [31.2476, 121.4989, "2026-07-08T09:33:00Z"],
-  [31.2529, 121.5037, "2026-07-08T09:42:00Z"],
-  [31.2588, 121.5081, "2026-07-08T09:50:00Z"],
-  [31.2632, 121.5149, "2026-07-08T09:59:00Z"]
-]
-  .map((row) => row.join(","))
-  .join("\n");
+const sampleEvents = [
+  {
+    id: "evt-1",
+    type: "user",
+    name: "用户请求",
+    content: "分析 anno-runner 的失败测试，并给出修复方案。",
+    time: "2026-07-08T09:00:00Z",
+    status: "success"
+  },
+  {
+    id: "evt-2",
+    type: "agent",
+    name: "规划",
+    content: "读取测试输出，定位失败路径，优先复现最小问题。",
+    time: "2026-07-08T09:00:08Z",
+    duration: 12,
+    status: "success"
+  },
+  {
+    id: "evt-3",
+    type: "tool",
+    name: "rg",
+    content: "搜索 failing assertion 和相关 fixture。",
+    time: "2026-07-08T09:00:24Z",
+    duration: 3,
+    status: "success"
+  },
+  {
+    id: "evt-4",
+    type: "agent",
+    name: "观察",
+    content: "发现 parser 对缺失 optional 字段处理不一致。",
+    time: "2026-07-08T09:00:32Z",
+    status: "success"
+  },
+  {
+    id: "evt-5",
+    type: "tool",
+    name: "pytest",
+    content: "运行 tests/test_harbor_parser.py::test_missing_optional_fields。",
+    time: "2026-07-08T09:00:46Z",
+    duration: 8,
+    status: "failed"
+  },
+  {
+    id: "evt-6",
+    type: "error",
+    name: "断言失败",
+    content: "expected empty list, got None。",
+    time: "2026-07-08T09:00:55Z",
+    status: "failed"
+  },
+  {
+    id: "evt-7",
+    type: "agent",
+    name: "修复",
+    content: "统一 normalize 阶段的默认值，并补充回归测试。",
+    time: "2026-07-08T09:01:11Z",
+    duration: 45,
+    status: "success"
+  },
+  {
+    id: "evt-8",
+    type: "tool",
+    name: "pytest",
+    content: "运行相关测试文件。",
+    time: "2026-07-08T09:02:02Z",
+    duration: 14,
+    status: "success"
+  },
+  {
+    id: "evt-9",
+    type: "agent",
+    name: "总结",
+    content: "报告修改点、验证结果和剩余风险。",
+    time: "2026-07-08T09:02:24Z",
+    status: "success"
+  }
+];
 
-function parseCsv(text) {
-  const rows = text
-    .trim()
-    .split(/\r?\n/)
-    .map((line) => line.split(",").map((cell) => cell.trim()));
-  const headers = rows.shift().map((header) => header.toLowerCase());
-  const latKey = headers.findIndex((h) => ["lat", "latitude", "纬度"].includes(h));
-  const lngKey = headers.findIndex((h) => ["lng", "lon", "longitude", "经度"].includes(h));
-  const timeKey = headers.findIndex((h) => ["time", "timestamp", "date", "时间"].includes(h));
+function parseTrace(text) {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
 
-  if (latKey < 0 || lngKey < 0) {
-    throw new Error("CSV 需要包含 lat 和 lng 列。");
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) return parsed;
+    if (Array.isArray(parsed.events)) return parsed.events;
+    if (Array.isArray(parsed.trace)) return parsed.trace;
+    if (Array.isArray(parsed.steps)) return parsed.steps;
+  } catch {
+    if (!trimmed.includes("\n")) throw new Error("无法解析 JSON 运行轨迹。");
+    return trimmed
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
   }
 
-  return rows
-    .map((row, index) => ({
-      lat: Number(row[latKey]),
-      lng: Number(row[lngKey]),
-      time: timeKey >= 0 ? parseTime(row[timeKey]) : index,
-      label: timeKey >= 0 ? row[timeKey] : `点 ${index + 1}`
-    }))
-    .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+  throw new Error("JSON 需要是事件数组，或包含 events / trace / steps 数组。");
 }
 
-function parseGeoJson(text) {
-  const geojson = JSON.parse(text);
-  const features =
-    geojson.type === "FeatureCollection"
-      ? geojson.features
-      : geojson.type === "Feature"
-        ? [geojson]
-        : [{ geometry: geojson, properties: {} }];
-
-  const parsed = [];
-  features.forEach((feature) => {
-    const geometry = feature.geometry;
-    if (!geometry) return;
-
-    if (geometry.type === "LineString") {
-      geometry.coordinates.forEach(([lng, lat], index) => {
-        parsed.push({ lat, lng, time: index, label: `点 ${parsed.length + 1}` });
-      });
-    }
-
-    if (geometry.type === "Point") {
-      const [lng, lat] = geometry.coordinates;
-      const rawTime = feature.properties?.time || feature.properties?.timestamp;
-      parsed.push({
-        lat,
-        lng,
-        time: rawTime ? parseTime(rawTime) : parsed.length,
-        label: rawTime || `点 ${parsed.length + 1}`
-      });
-    }
-  });
-
-  return parsed;
+function normalizeEvents(rawEvents) {
+  return rawEvents
+    .map((event, index) => {
+      const type = normalizeType(event.type || event.role || event.kind || event.category);
+      const time = parseTime(event.time || event.timestamp || event.started_at || event.created_at, index);
+      const duration = Number(event.duration ?? event.duration_ms ?? event.elapsed_ms ?? 0);
+      const durationMs = Number.isFinite(duration)
+        ? event.duration_ms || event.elapsed_ms
+          ? duration
+          : duration * 1000
+        : 0;
+      const status = String(event.status || event.outcome || "success").toLowerCase();
+      return {
+        id: event.id || event.event_id || `event-${index + 1}`,
+        type,
+        lane: type,
+        name: event.name || event.title || event.tool || event.action || laneLabel(type),
+        content: event.content || event.message || event.input || event.output || event.summary || "",
+        time,
+        rawTime: event.time || event.timestamp || "",
+        durationMs,
+        status,
+        raw: event
+      };
+    })
+    .sort((a, b) => a.time - b.time)
+    .map((event, index, list) => ({
+      ...event,
+      index,
+      gapMs: index === 0 ? 0 : Math.max(event.time - list[index - 1].time, 0)
+    }));
 }
 
-function parseTime(value) {
+function normalizeType(value) {
+  const type = String(value || "").toLowerCase();
+  if (["human", "user", "request"].includes(type)) return "user";
+  if (["assistant", "agent", "thought", "reasoning", "plan"].includes(type)) return "agent";
+  if (["tool", "function", "command", "action"].includes(type)) return "tool";
+  if (["system", "observation", "result"].includes(type)) return "system";
+  if (["error", "exception", "failed", "failure"].includes(type)) return "error";
+  return "agent";
+}
+
+function parseTime(value, fallback) {
+  if (!value) return fallback;
   const date = Date.parse(value);
   if (Number.isFinite(date)) return date;
   const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : 0;
+  return Number.isFinite(numeric) ? numeric : fallback;
 }
 
-function enrichTrack(rawPoints) {
-  return rawPoints
-    .map((point, index, source) => {
-      const previous = source[index - 1];
-      const distanceFromPrevious = previous ? haversine(previous, point) : 0;
-      const hours = previous ? Math.max((point.time - previous.time) / 3600000, 0) : 0;
-      return {
-        ...point,
-        distanceFromPrevious,
-        speed: hours > 0 ? distanceFromPrevious / hours : 0
-      };
-    })
-    .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng));
-}
-
-function haversine(a, b) {
-  const radius = 6371;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-  const sinLat = Math.sin(dLat / 2);
-  const sinLng = Math.sin(dLng / 2);
-  const value = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
-  return 2 * radius * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
-}
-
-function toRad(degrees) {
-  return (degrees * Math.PI) / 180;
-}
-
-function loadTrack(rawPoints, name) {
-  points = enrichTrack(rawPoints).sort((a, b) => a.time - b.time);
-  timeSlider.value = "100";
+function loadTrace(rawEvents, name) {
+  events = normalizeEvents(rawEvents);
+  if (events.length < 1) throw new Error("至少需要一个有效事件。");
+  selectedIndex = 0;
   hoverIndex = -1;
+  timeSlider.value = "100";
   trackName.textContent = name;
-  emptyState.hidden = points.length > 0;
+  emptyState.hidden = true;
   updateStats();
+  updateDetails(events[0]);
   resizeCanvas();
 }
 
@@ -151,31 +212,31 @@ function resizeCanvas() {
   draw();
 }
 
-function projectPoints() {
-  if (!points.length) return [];
-
+function layoutEvents() {
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
-  const padding = 56;
-  const lats = points.map((point) => point.lat);
-  const lngs = points.map((point) => point.lng);
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
-  const minLng = Math.min(...lngs);
-  const maxLng = Math.max(...lngs);
-  const latRange = maxLat - minLat || 0.001;
-  const lngRange = maxLng - minLng || 0.001;
-  const scale = Math.min((width - padding * 2) / lngRange, (height - padding * 2) / latRange);
-  const contentWidth = lngRange * scale;
-  const contentHeight = latRange * scale;
-  const offsetX = (width - contentWidth) / 2;
-  const offsetY = (height - contentHeight) / 2;
+  const left = 130;
+  const right = 48;
+  const top = 54;
+  const bottom = 42;
+  const usableWidth = Math.max(320, width - left - right);
+  const usableHeight = Math.max(280, height - top - bottom);
+  const laneGap = usableHeight / Math.max(lanes.length - 1, 1);
+  const firstTime = events[0]?.time ?? 0;
+  const lastTime = events.at(-1)?.time ?? firstTime + events.length;
+  const duration = Math.max(lastTime - firstTime, events.length - 1, 1);
 
-  return points.map((point) => ({
-    ...point,
-    x: offsetX + (point.lng - minLng) * scale,
-    y: offsetY + contentHeight - (point.lat - minLat) * scale
-  }));
+  return events.map((event, index) => {
+    const laneIndex = lanes.findIndex((lane) => lane.key === event.lane);
+    const fallbackX = left + (usableWidth * index) / Math.max(events.length - 1, 1);
+    const timeX = left + ((event.time - firstTime) / duration) * usableWidth;
+    return {
+      ...event,
+      x: Number.isFinite(timeX) ? timeX : fallbackX,
+      y: top + Math.max(laneIndex, 0) * laneGap,
+      radius: event.type === "error" || event.status === "failed" ? 13 : 10
+    };
+  });
 }
 
 function draw() {
@@ -184,62 +245,92 @@ function draw() {
   ctx.clearRect(0, 0, width, height);
   drawBackground(width, height);
 
-  projected = projectPoints();
-  const visibleCount = Math.max(0, Math.ceil((projected.length * Number(timeSlider.value)) / 100));
-  const visible = projected.slice(0, visibleCount);
+  positioned = layoutEvents();
+  const visibleCount = Math.max(0, Math.ceil((positioned.length * Number(timeSlider.value)) / 100));
+  const visible = positioned.slice(0, visibleCount);
+  if (!visible.length) return;
 
-  if (visible.length < 2) return;
-
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  ctx.lineWidth = 5;
-  for (let index = 1; index < visible.length; index += 1) {
-    ctx.strokeStyle = getSegmentColor(visible[index], index / Math.max(visible.length - 1, 1));
-    ctx.beginPath();
-    ctx.moveTo(visible[index - 1].x, visible[index - 1].y);
-    ctx.lineTo(visible[index].x, visible[index].y);
-    ctx.stroke();
-  }
-
-  drawEndpoints(visible);
-
-  if (showPoints.checked) {
-    visible.forEach((point, index) => drawPoint(point, index === hoverIndex));
-  }
-
+  drawConnections(visible);
+  visible.forEach((event, index) => drawEvent(event, index === hoverIndex || index === selectedIndex));
   updateTimelineLabel(visible.at(-1));
 }
 
 function drawBackground(width, height) {
-  ctx.fillStyle = "#edf3fa";
+  ctx.fillStyle = "#f6f8fb";
   ctx.fillRect(0, 0, width, height);
 
-  if (!showGrid.checked) return;
-
-  ctx.strokeStyle = "rgba(101, 112, 134, 0.18)";
-  ctx.lineWidth = 1;
-  for (let x = 0; x < width; x += 48) {
+  lanes.forEach((lane, index) => {
+    const y = 54 + index * (Math.max(280, height - 96) / Math.max(lanes.length - 1, 1));
+    ctx.strokeStyle = index % 2 === 0 ? "rgba(148, 163, 184, 0.32)" : "rgba(148, 163, 184, 0.18)";
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, height);
+    ctx.moveTo(108, y);
+    ctx.lineTo(width - 28, y);
     ctx.stroke();
-  }
-  for (let y = 0; y < height; y += 48) {
+    ctx.fillStyle = lane.color;
+    ctx.font = "700 12px Inter, system-ui, sans-serif";
+    ctx.fillText(lane.label, 24, y + 4);
+  });
+
+  if (!showGrid.checked) return;
+  ctx.strokeStyle = "rgba(148, 163, 184, 0.16)";
+  for (let x = 130; x < width - 28; x += 72) {
     ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(width, y);
+    ctx.moveTo(x, 28);
+    ctx.lineTo(x, height - 28);
     ctx.stroke();
   }
 }
 
-function getSegmentColor(point, progress) {
-  if (colorMode.value === "solid") return "#1267d8";
-  if (colorMode.value === "time") return interpolateColor("#1267d8", "#16a34a", progress);
+function drawConnections(visible) {
+  ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+  for (let index = 1; index < visible.length; index += 1) {
+    const previous = visible[index - 1];
+    const current = visible[index];
+    ctx.strokeStyle = getConnectionColor(current, index / Math.max(visible.length - 1, 1));
+    ctx.beginPath();
+    ctx.moveTo(previous.x, previous.y);
+    const midX = previous.x + (current.x - previous.x) * 0.5;
+    ctx.bezierCurveTo(midX, previous.y, midX, current.y, current.x, current.y);
+    ctx.stroke();
+  }
+}
 
-  const maxSpeed = Math.max(...points.map((item) => item.speed), 1);
-  const ratio = Math.min(point.speed / maxSpeed, 1);
-  if (ratio < 0.5) return interpolateColor("#22c55e", "#facc15", ratio * 2);
-  return interpolateColor("#facc15", "#ef4444", (ratio - 0.5) * 2);
+function drawEvent(event, isActive) {
+  const lane = lanes.find((item) => item.key === event.lane) || lanes[1];
+  const statusColor = statusColors[event.status] || lane.color;
+  ctx.fillStyle = "white";
+  ctx.strokeStyle = isActive ? "#111827" : statusColor;
+  ctx.lineWidth = isActive ? 4 : 3;
+  ctx.beginPath();
+  ctx.arc(event.x, event.y, event.radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = statusColor;
+  ctx.beginPath();
+  ctx.arc(event.x, event.y, Math.max(4, event.radius - 6), 0, Math.PI * 2);
+  ctx.fill();
+
+  if (!showLabels.checked) return;
+  const label = event.name.length > 24 ? `${event.name.slice(0, 22)}...` : event.name;
+  ctx.fillStyle = "#172033";
+  ctx.font = "700 12px Inter, system-ui, sans-serif";
+  ctx.fillText(label, event.x + 14, event.y - 10);
+  ctx.fillStyle = "#657086";
+  ctx.font = "11px Inter, system-ui, sans-serif";
+  ctx.fillText(formatDuration(event.durationMs), event.x + 14, event.y + 7);
+}
+
+function getConnectionColor(event, progress) {
+  if (colorMode.value === "type") {
+    return lanes.find((lane) => lane.key === event.lane)?.color || "#1267d8";
+  }
+  if (colorMode.value === "status") {
+    return statusColors[event.status] || "#1267d8";
+  }
+  return interpolateColor("#2563eb", "#16a34a", progress);
 }
 
 function interpolateColor(start, end, ratio) {
@@ -253,60 +344,60 @@ function hexToRgb(hex) {
   return [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16));
 }
 
-function drawPoint(point, isActive) {
-  ctx.fillStyle = isActive ? "#172033" : "#ffffff";
-  ctx.strokeStyle = isActive ? "#172033" : "#1267d8";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(point.x, point.y, isActive ? 7 : 4, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-}
-
-function drawEndpoints(visible) {
-  const start = visible[0];
-  const end = visible.at(-1);
-  ctx.fillStyle = "#16a34a";
-  ctx.beginPath();
-  ctx.arc(start.x, start.y, 8, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "#e8590c";
-  ctx.beginPath();
-  ctx.arc(end.x, end.y, 8, 0, Math.PI * 2);
-  ctx.fill();
-}
-
 function updateStats() {
-  const distance = points.reduce((sum, point) => sum + point.distanceFromPrevious, 0);
-  const durationMs = points.length > 1 ? points.at(-1).time - points[0].time : 0;
-  const durationHours = Math.max(durationMs / 3600000, 0);
-  const averageSpeed = durationHours > 0 ? distance / durationHours : 0;
+  const toolCalls = events.filter((event) => event.type === "tool").length;
+  const failures = events.filter((event) => event.type === "error" || event.status === "failed").length;
+  const totalDuration = events.reduce((sum, event) => sum + event.durationMs, 0);
   const values = [
-    points.length.toLocaleString("zh-CN"),
-    `${distance.toFixed(2)} km`,
-    `${(durationHours * 60).toFixed(0)} min`,
-    `${averageSpeed.toFixed(1)} km/h`
+    events.length.toLocaleString("zh-CN"),
+    toolCalls.toLocaleString("zh-CN"),
+    failures.toLocaleString("zh-CN"),
+    formatDuration(totalDuration)
   ];
 
   statsGrid.querySelectorAll("dd").forEach((node, index) => {
     node.textContent = values[index];
   });
 
-  trackMeta.textContent = points.length
-    ? `${formatPoint(points[0])} -> ${formatPoint(points.at(-1))}`
-    : "等待加载数据";
+  trackMeta.textContent = events.length
+    ? `${formatTime(events[0].time)} -> ${formatTime(events.at(-1).time)}`
+    : "等待加载运行数据";
 }
 
-function updateTimelineLabel(point) {
-  if (!point) {
-    timeOutput.textContent = "全部轨迹";
+function updateDetails(event) {
+  if (!event) {
+    detailPanel.innerHTML = "<p class=\"muted\">选择一个节点查看事件详情。</p>";
     return;
   }
-  timeOutput.textContent = point.label || formatTime(point.time);
+
+  detailPanel.innerHTML = `
+    <div class="detail-heading">
+      <span class="type-pill type-${event.type}">${laneLabel(event.type)}</span>
+      <strong>${escapeHtml(event.name)}</strong>
+    </div>
+    <dl class="detail-list">
+      <div><dt>时间</dt><dd>${escapeHtml(formatTime(event.time))}</dd></div>
+      <div><dt>耗时</dt><dd>${escapeHtml(formatDuration(event.durationMs))}</dd></div>
+      <div><dt>状态</dt><dd>${escapeHtml(event.status)}</dd></div>
+      <div><dt>ID</dt><dd>${escapeHtml(event.id)}</dd></div>
+    </dl>
+    <pre class="event-content">${escapeHtml(String(event.content || "无内容"))}</pre>
+  `;
 }
 
-function formatPoint(point) {
-  return `${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`;
+function updateTimelineLabel(event) {
+  timeOutput.textContent = event ? `${event.index + 1}/${events.length} ${event.name}` : "未播放";
+}
+
+function laneLabel(type) {
+  return lanes.find((lane) => lane.key === type)?.label || "Agent";
+}
+
+function formatDuration(ms) {
+  if (!ms) return "0 ms";
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)} s`;
+  return `${(ms / 60000).toFixed(1)} min`;
 }
 
 function formatTime(value) {
@@ -314,24 +405,32 @@ function formatTime(value) {
   return Number.isFinite(date.getTime()) ? date.toLocaleString("zh-CN") : String(value);
 }
 
-function clearTrack() {
-  points = [];
-  projected = [];
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => {
+    const entities = { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" };
+    return entities[char];
+  });
+}
+
+function clearTrace() {
+  events = [];
+  positioned = [];
   hoverIndex = -1;
+  selectedIndex = 0;
   fileInput.value = "";
-  trackName.textContent = "未加载轨迹";
-  trackMeta.textContent = "等待加载数据";
+  trackName.textContent = "未加载运行轨迹";
+  trackMeta.textContent = "等待加载运行数据";
   emptyState.hidden = false;
   updateStats();
+  updateDetails(null);
   stopPlayback();
   draw();
 }
 
 async function handleFile(file) {
   const text = await file.text();
-  const rawPoints = file.name.endsWith(".csv") ? parseCsv(text) : parseGeoJson(text);
-  if (rawPoints.length < 2) throw new Error("至少需要两个有效轨迹点。");
-  loadTrack(rawPoints, file.name);
+  const rawEvents = parseTrace(text);
+  loadTrace(rawEvents, file.name);
 }
 
 function stopPlayback() {
@@ -351,12 +450,12 @@ fileInput.addEventListener("change", async (event) => {
 });
 
 loadSampleBtn.addEventListener("click", () => {
-  loadTrack(parseCsv(sampleTrack), "上海示例轨迹");
+  loadTrace(sampleEvents, "Agent 调试示例");
 });
 
-clearBtn.addEventListener("click", clearTrack);
+clearBtn.addEventListener("click", clearTrace);
 
-[colorMode, showPoints, showGrid, timeSlider].forEach((control) => {
+[colorMode, showLabels, showGrid, timeSlider].forEach((control) => {
   control.addEventListener("input", draw);
 });
 
@@ -368,34 +467,42 @@ playBtn.addEventListener("click", () => {
   playBtn.textContent = "Ⅱ";
   timeSlider.value = "0";
   playTimer = window.setInterval(() => {
-    const next = Number(timeSlider.value) + 2;
+    const next = Number(timeSlider.value) + 3;
     timeSlider.value = String(next);
     draw();
     if (next >= 100) stopPlayback();
-  }, 90);
+  }, 120);
 });
 
 canvas.addEventListener("mousemove", (event) => {
   const rect = canvas.getBoundingClientRect();
   const x = event.clientX - rect.left;
   const y = event.clientY - rect.top;
-  const visibleCount = Math.ceil((projected.length * Number(timeSlider.value)) / 100);
-  const visible = projected.slice(0, visibleCount);
-  hoverIndex = visible.findIndex((point) => Math.hypot(point.x - x, point.y - y) < 9);
+  const visibleCount = Math.ceil((positioned.length * Number(timeSlider.value)) / 100);
+  const visible = positioned.slice(0, visibleCount);
+  hoverIndex = visible.findIndex((item) => Math.hypot(item.x - x, item.y - y) < item.radius + 6);
 
   if (hoverIndex >= 0) {
-    const point = visible[hoverIndex];
+    const item = visible[hoverIndex];
     tooltip.hidden = false;
-    tooltip.style.left = `${Math.min(x + 14, rect.width - 220)}px`;
-    tooltip.style.top = `${Math.max(y - 16, 12)}px`;
+    tooltip.style.left = `${Math.min(x + 14, rect.width - 260)}px`;
+    tooltip.style.top = `${Math.max(y - 18, 12)}px`;
     tooltip.innerHTML = `
-      <strong>${point.label || formatTime(point.time)}</strong><br>
-      坐标：${formatPoint(point)}<br>
-      速度：${point.speed.toFixed(1)} km/h
+      <strong>${escapeHtml(item.name)}</strong><br>
+      类型：${escapeHtml(laneLabel(item.type))}<br>
+      状态：${escapeHtml(item.status)}<br>
+      耗时：${escapeHtml(formatDuration(item.durationMs))}
     `;
   } else {
     tooltip.hidden = true;
   }
+  draw();
+});
+
+canvas.addEventListener("click", () => {
+  if (hoverIndex < 0) return;
+  selectedIndex = hoverIndex;
+  updateDetails(positioned[selectedIndex]);
   draw();
 });
 
@@ -407,4 +514,4 @@ canvas.addEventListener("mouseleave", () => {
 
 window.addEventListener("resize", resizeCanvas);
 
-loadTrack(parseCsv(sampleTrack), "上海示例轨迹");
+loadTrace(sampleEvents, "Agent 调试示例");

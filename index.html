@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>轨迹可视化工具</title>
+    <title>Agent 运行轨迹可视化工具</title>
     <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
@@ -11,17 +11,17 @@
       <aside class="sidebar">
         <div class="brand">
           <div>
-            <h1>轨迹可视化</h1>
-            <p>CSV / GeoJSON 轨迹分析</p>
+            <h1>Agent 运行轨迹</h1>
+            <p>事件流、工具调用和错误路径分析</p>
           </div>
         </div>
 
         <section class="panel">
           <h2>数据</h2>
           <label class="upload-zone" for="fileInput">
-            <input id="fileInput" type="file" accept=".csv,.json,.geojson,application/json,text/csv" />
-            <span>导入轨迹文件</span>
-            <small>CSV: lat,lng,time；GeoJSON: LineString / Point</small>
+            <input id="fileInput" type="file" accept=".json,.jsonl,application/json,application/x-ndjson" />
+            <span>导入运行轨迹</span>
+            <small>支持 JSON 数组、events/trace/steps 对象、JSONL</small>
           </label>
           <div class="button-row">
             <button id="loadSampleBtn" type="button">载入示例</button>
@@ -30,18 +30,18 @@
         </section>
 
         <section class="panel">
-          <h2>图层</h2>
+          <h2>视图</h2>
           <label class="control-line">
             <span>着色方式</span>
             <select id="colorMode">
-              <option value="speed">按速度</option>
+              <option value="type">按类型</option>
+              <option value="status">按状态</option>
               <option value="time">按时间</option>
-              <option value="solid">单色</option>
             </select>
           </label>
           <label class="control-line">
-            <span>轨迹点</span>
-            <input id="showPoints" type="checkbox" checked />
+            <span>节点标签</span>
+            <input id="showLabels" type="checkbox" checked />
           </label>
           <label class="control-line">
             <span>网格</span>
@@ -52,38 +52,47 @@
         <section class="panel stats-panel">
           <h2>统计</h2>
           <dl id="statsGrid" class="stats-grid">
-            <div><dt>点数</dt><dd>0</dd></div>
-            <div><dt>总距离</dt><dd>0 km</dd></div>
-            <div><dt>耗时</dt><dd>0 min</dd></div>
-            <div><dt>均速</dt><dd>0 km/h</dd></div>
+            <div><dt>事件数</dt><dd>0</dd></div>
+            <div><dt>工具调用</dt><dd>0</dd></div>
+            <div><dt>失败</dt><dd>0</dd></div>
+            <div><dt>总耗时</dt><dd>0 ms</dd></div>
           </dl>
         </section>
 
         <section class="panel">
+          <h2>事件详情</h2>
+          <div id="detailPanel" class="detail-panel">
+            <p class="muted">选择一个节点查看事件详情。</p>
+          </div>
+        </section>
+
+        <section class="panel">
           <h2>格式</h2>
-          <pre class="format-note">lat,lng,time
-31.2304,121.4737,2026-07-08T09:00:00Z</pre>
+          <pre class="format-note">[
+  {"type":"user","name":"用户请求","content":"..."},
+  {"type":"tool","name":"pytest","status":"failed"}
+]</pre>
         </section>
       </aside>
 
       <section class="workspace">
         <header class="topbar">
           <div>
-            <strong id="trackName">示例轨迹</strong>
-            <span id="trackMeta">等待加载数据</span>
+            <strong id="trackName">Agent 调试示例</strong>
+            <span id="trackMeta">等待加载运行数据</span>
           </div>
           <div class="legend" id="legend">
-            <span class="legend-low">慢</span>
+            <span class="legend-low">开始</span>
             <span class="legend-ramp"></span>
-            <span class="legend-high">快</span>
+            <span class="legend-high">结束</span>
           </div>
         </header>
 
         <div class="canvas-wrap">
           <canvas id="trackCanvas"></canvas>
           <div id="emptyState" class="empty-state">
-            <h2>导入轨迹文件开始分析</h2>
-            <p>支持 CSV、GeoJSON LineString、GeoJSON Point 序列。</p>
+            <h2>导入 Agent 运行轨迹开始分析</h2>
+            <p>支持 JSON / JSONL 事件流，按执行顺序展示思考、动作、工具和结果。</p>
           </div>
           <div id="tooltip" class="tooltip" hidden></div>
         </div>
