@@ -22,13 +22,29 @@ const playBtn = document.querySelector("#playBtn");
 const timeSlider = document.querySelector("#timeSlider");
 const timeOutput = document.querySelector("#timeOutput");
 
-const lanes = [
-  { key: "input", label: "Input", color: "#2563eb" },
-  { key: "reasoning", label: "Reasoning", color: "#7c3aed" },
-  { key: "execution", label: "Execution", color: "#059669" },
-  { key: "observation", label: "Observation", color: "#475569" },
-  { key: "failure", label: "Failure", color: "#dc2626" }
-];
+const laneSchemes = {
+  event_flow: [
+    { key: "input", label: "Input", color: "#2563eb" },
+    { key: "reasoning", label: "Reasoning", color: "#7c3aed" },
+    { key: "execution", label: "Execution", color: "#059669" },
+    { key: "observation", label: "Observation", color: "#475569" },
+    { key: "failure", label: "Failure", color: "#dc2626" }
+  ],
+  tool_timeline: [
+    { key: "context", label: "Context", color: "#64748b" },
+    { key: "tool", label: "Tool / Command", color: "#059669" },
+    { key: "result", label: "Result", color: "#2563eb" },
+    { key: "failure", label: "Failure", color: "#dc2626" }
+  ],
+  llm_trace: [
+    { key: "prompt", label: "Prompt", color: "#2563eb" },
+    { key: "context", label: "Context", color: "#0f766e" },
+    { key: "model", label: "Model", color: "#7c3aed" },
+    { key: "check", label: "Check", color: "#f59e0b" },
+    { key: "output", label: "Output", color: "#16a34a" },
+    { key: "failure", label: "Failure", color: "#dc2626" }
+  ]
+};
 
 const categoryAliases = {
   user: "input",
@@ -128,6 +144,37 @@ const visualizationSchemes = {
     ]
   }
 };
+
+function currentSchemeKey() {
+  return schemeSelect.value || "event_flow";
+}
+
+function activeLanes() {
+  return laneSchemes[currentSchemeKey()] || laneSchemes.event_flow;
+}
+
+function resolveSchemeLane(event) {
+  const scheme = currentSchemeKey();
+  if (event.status === "failed" || event.status === "error" || event.category === "failure") return "failure";
+
+  if (scheme === "tool_timeline") {
+    if (event.category === "execution") return "tool";
+    if (event.category === "observation") return "result";
+    return "context";
+  }
+
+  if (scheme === "llm_trace") {
+    if (["input", "user", "human", "user_message", "task"].includes(event.type) || event.category === "input") {
+      return "prompt";
+    }
+    if (/retrieval|search|context|memory/i.test(event.type)) return "context";
+    if (/llm|model|completion|chat/i.test(event.type) || event.category === "reasoning") return "model";
+    if (/guardrail|check|moderation|validation/i.test(event.type)) return "check";
+    return "output";
+  }
+
+  return event.category;
+}
 
 const sampleTraces = {
   debug: {
@@ -644,10 +691,10 @@ function validateMapping() {
   return missing;
 }
 
-function applyCurrentMapping() {
+function applyCurrentMapping(options = {}) {
   const missing = validateMapping();
   if (missing.length) {
-    alert(`请先映射必要字段：${missing.join("、")}`);
+    if (!options.silent) alert(`请先映射必要字段：${missing.join("、")}`);
     return;
   }
   loadTrace(pendingRawEvents, pendingTraceName, readCurrentMapping());
@@ -663,6 +710,7 @@ function resizeCanvas() {
 }
 
 function layoutEvents() {
+  const lanes = activeLanes();
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
   const left = 130;
@@ -677,11 +725,13 @@ function layoutEvents() {
   const duration = Math.max(lastTime - firstTime, events.length - 1, 1);
 
   return events.map((event, index) => {
-    const laneIndex = lanes.findIndex((lane) => lane.key === event.lane);
+    const laneKey = resolveSchemeLane(event);
+    const laneIndex = lanes.findIndex((lane) => lane.key === laneKey);
     const fallbackX = left + (usableWidth * index) / Math.max(events.length - 1, 1);
     const timeX = left + ((event.time - firstTime) / duration) * usableWidth;
     return {
       ...event,
+      displayLane: laneKey,
       x: Number.isFinite(timeX) ? timeX : fallbackX,
       y: top + Math.max(laneIndex, 0) * laneGap,
       radius: event.category === "failure" || event.status === "failed" ? 13 : 10
@@ -706,6 +756,7 @@ function draw() {
 }
 
 function drawBackground(width, height) {
+  const lanes = activeLanes();
   ctx.fillStyle = "#f6f8fb";
   ctx.fillRect(0, 0, width, height);
 
@@ -748,7 +799,8 @@ function drawConnections(visible) {
 }
 
 function drawEvent(event, isActive) {
-  const lane = lanes.find((item) => item.key === event.lane) || lanes[1];
+  const lanes = activeLanes();
+  const lane = lanes.find((item) => item.key === event.displayLane) || lanes[1];
   const statusColor = statusColors[event.status] || lane.color;
   ctx.fillStyle = "white";
   ctx.strokeStyle = isActive ? "#111827" : statusColor;
@@ -774,8 +826,9 @@ function drawEvent(event, isActive) {
 }
 
 function getConnectionColor(event, progress) {
+  const lanes = activeLanes();
   if (colorMode.value === "type") {
-    return lanes.find((lane) => lane.key === event.lane)?.color || "#1267d8";
+    return lanes.find((lane) => lane.key === event.displayLane)?.color || "#1267d8";
   }
   if (colorMode.value === "status") {
     return statusColors[event.status] || "#1267d8";
@@ -795,15 +848,19 @@ function hexToRgb(hex) {
 }
 
 function updateStats() {
-  const toolCalls = events.filter((event) => event.category === "execution").length;
+  updateStatsLabels();
+  const scheme = currentSchemeKey();
+  const executionCount = events.filter((event) => event.category === "execution").length;
   const failures = events.filter((event) => event.category === "failure" || event.status === "failed").length;
+  const modelCalls = events.filter((event) => /llm|model|completion|chat/i.test(event.type)).length;
+  const checks = events.filter((event) => /guardrail|check|moderation|validation/i.test(event.type)).length;
   const totalDuration = events.reduce((sum, event) => sum + event.durationMs, 0);
-  const values = [
-    events.length.toLocaleString("zh-CN"),
-    toolCalls.toLocaleString("zh-CN"),
-    failures.toLocaleString("zh-CN"),
-    formatDuration(totalDuration)
-  ];
+  const values =
+    scheme === "llm_trace"
+      ? [events.length.toLocaleString("zh-CN"), modelCalls.toLocaleString("zh-CN"), checks.toLocaleString("zh-CN"), formatDuration(totalDuration)]
+      : scheme === "tool_timeline"
+        ? [events.length.toLocaleString("zh-CN"), executionCount.toLocaleString("zh-CN"), failures.toLocaleString("zh-CN"), formatDuration(totalDuration)]
+        : [events.length.toLocaleString("zh-CN"), executionCount.toLocaleString("zh-CN"), failures.toLocaleString("zh-CN"), formatDuration(totalDuration)];
 
   statsGrid.querySelectorAll("dd").forEach((node, index) => {
     node.textContent = values[index];
@@ -812,6 +869,19 @@ function updateStats() {
   trackMeta.textContent = events.length
     ? `${formatTime(events[0].time)} -> ${formatTime(events.at(-1).time)}`
     : "等待加载运行数据";
+}
+
+function updateStatsLabels() {
+  const labels =
+    currentSchemeKey() === "llm_trace"
+      ? ["节点数", "模型调用", "检查", "总耗时"]
+      : currentSchemeKey() === "tool_timeline"
+        ? ["节点数", "工具/命令", "失败", "总耗时"]
+        : ["事件数", "执行节点", "失败", "总耗时"];
+
+  statsGrid.querySelectorAll("dt").forEach((node, index) => {
+    node.textContent = labels[index];
+  });
 }
 
 function updateDetails(event) {
@@ -850,7 +920,7 @@ function updateTimelineLabel(event) {
 }
 
 function categoryLabel(category) {
-  return lanes.find((lane) => lane.key === category)?.label || "Reasoning";
+  return laneSchemes.event_flow.find((lane) => lane.key === category)?.label || "Reasoning";
 }
 
 function typeLabel(type) {
@@ -862,7 +932,7 @@ function typeLabel(type) {
 }
 
 function categoryColor(category) {
-  return lanes.find((lane) => lane.key === category)?.color || lanes[1].color;
+  return laneSchemes.event_flow.find((lane) => lane.key === category)?.color || laneSchemes.event_flow[1].color;
 }
 
 function renderMetadata(metadata) {
@@ -961,6 +1031,7 @@ applyMappingBtn.addEventListener("click", applyCurrentMapping);
 schemeSelect.addEventListener("change", () => {
   if (!pendingRawEvents.length) return;
   renderMappingPanel();
+  applyCurrentMapping({ silent: true });
 });
 
 playBtn.addEventListener("click", () => {
