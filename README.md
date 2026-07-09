@@ -23,6 +23,11 @@ src/
     sampleTraces.js       内置示例轨迹
   core/
     traceModel.js         JSON/JSONL 解析、字段扫描、标准节点模型
+    adapterTypes.js       adapter 输入输出约定
+  adapters/
+    identityAdapter.js    标准节点输入的轻量适配
+    mappingAdapter.js     字段映射 adapter
+    index.js              adapter 统一导出
   layouts/
     layoutEngine.js       泳道、树状分支、角色交互布局计算
   viewer/
@@ -56,6 +61,51 @@ viewer.setEvents(normalizedEvents);
 ```
 
 数据适配建议默认放在接入方项目里：接入方把自己的日志转成标准节点，再调用 `viewer.setEvents()`。本项目保留字段映射 UI 和 adapter 扩展点，并可逐步提供常见框架的示例 adapter。
+
+## Adapter
+
+默认建议接入方在自己的项目里维护业务 adapter：
+
+```js
+function adaptMyTrace(rawLogs) {
+  return rawLogs.map((log) => ({
+    id: log.event_id,
+    type: log.kind,
+    category: log.phase,
+    name: log.title,
+    content: log.message,
+    time: Date.parse(log.started_at),
+    durationMs: log.elapsed_ms ?? 0,
+    status: log.outcome ?? "success",
+    parentId: log.parent_id ?? "",
+    actor: log.agent_name ?? "Agent",
+    metadata: log.extra ?? {},
+    payload: log
+  }));
+}
+```
+
+如果只是字段名不同，可以使用内置 mapping adapter：
+
+```js
+import { createMappingAdapter } from "./src/adapters/index.js";
+
+const adapter = createMappingAdapter({
+  id: "event_id",
+  type: "kind",
+  name: "title",
+  content: "message",
+  time: "started_at",
+  duration: "elapsed_ms",
+  status: "outcome",
+  parent: "parent_id",
+  actor: "agent_name",
+  metadata: "extra"
+});
+
+const events = adapter(rawEvents);
+viewer.setEvents(events);
+```
 
 ## 支持格式
 

@@ -4,7 +4,8 @@ import {
   visualizationSchemes
 } from "./config/traceConfig.js";
 import { sampleTraces } from "./config/sampleTraces.js";
-import { discoverFields, isPlainObject, normalizeEvents, parseTrace } from "./core/traceModel.js";
+import { createMappingAdapter } from "./adapters/index.js";
+import { discoverFields, isPlainObject, parseTrace } from "./core/traceModel.js";
 import { AgentTraceViewer } from "./viewer/AgentTraceViewer.js";
 
 const canvas = document.querySelector("#trackCanvas");
@@ -61,7 +62,8 @@ function currentLayoutKey() {
 }
 
 function loadTrace(rawEvents, name, fieldMapping = null) {
-  events = normalizeEvents(rawEvents, fieldMapping);
+  const adapter = createMappingAdapter(fieldMapping || {});
+  events = adapter(rawEvents);
   if (events.length < 1) throw new Error("至少需要一个有效事件。");
   timeSlider.value = "100";
   trackName.textContent = name;
