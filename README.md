@@ -13,6 +13,50 @@ npm run dev
 
 也可以直接打开 `index.html`，但用本地 HTTP 服务更接近部署环境。
 
+## 代码结构
+
+```text
+src/
+  app.js                  应用组装、DOM 事件、canvas 绘制和交互
+  config/
+    traceConfig.js        数据方案、字段别名、泳道和状态颜色
+    sampleTraces.js       内置示例轨迹
+  core/
+    traceModel.js         JSON/JSONL 解析、字段扫描、标准节点模型
+  layouts/
+    layoutEngine.js       泳道、树状分支、角色交互布局计算
+  viewer/
+    AgentTraceViewer.js   可嵌入的纯图形 viewer，负责 canvas 渲染和图上交互
+```
+
+当前拆分原则：
+
+- `config` 只放可配置定义和样例数据
+- `core` 不依赖 DOM，只负责把外部数据变成内部事件节点
+- `layouts` 不负责绘制，只返回节点坐标和展示泳道
+- `viewer` 只负责图形、pan/zoom、hover/click 回调，不负责详情面板和字段映射 UI
+- `app.js` 负责把完整工具 UI、字段映射、统计、详情栏和 viewer 串起来
+
+## 嵌入方式
+
+外部项目如果只想嵌入图，可以直接使用 viewer：
+
+```js
+import { AgentTraceViewer } from "./src/viewer/AgentTraceViewer.js";
+
+const viewer = new AgentTraceViewer(document.querySelector("#traceCanvas"), {
+  layoutKey: "tree",
+  schemeKey: "event_flow",
+  onNodeClick: (node) => {
+    // 外部项目自己决定详情面板放在哪里
+  }
+});
+
+viewer.setEvents(normalizedEvents);
+```
+
+数据适配建议默认放在接入方项目里：接入方把自己的日志转成标准节点，再调用 `viewer.setEvents()`。本项目保留字段映射 UI 和 adapter 扩展点，并可逐步提供常见框架的示例 adapter。
+
 ## 支持格式
 
 支持 JSON 数组、包含 `events` / `trace` / `steps` / `nodes` 数组的 JSON 对象，以及 JSONL。工具不会要求外部项目使用固定字段名；上传后会扫描实际字段，再由用户把数据字段映射到当前数据方案需要的标准字段。

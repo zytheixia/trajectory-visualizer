@@ -93,12 +93,6 @@
           </dl>
         </section>
 
-        <section class="panel">
-          <h2>事件详情</h2>
-          <div id="detailPanel" class="detail-panel">
-            <p class="muted">选择一个节点查看事件详情。</p>
-          </div>
-        </section>
 
         <section class="panel">
           <h2>接入流程</h2>
@@ -129,6 +123,11 @@
             <p>支持 JSON / JSONL 事件流，按执行顺序展示思考、动作、工具和结果。</p>
           </div>
           <div id="tooltip" class="tooltip" hidden></div>
+          <div class="canvas-controls" id="canvasControls">
+            <button id="zoomInBtn" type="button" title="放大">+</button>
+            <button id="zoomOutBtn" type="button" title="缩小">−</button>
+            <button id="zoomResetBtn" type="button" title="重置视图">⟲</button>
+          </div>
         </div>
 
         <footer class="timeline">
@@ -137,6 +136,16 @@
           <output id="timeOutput">全部轨迹</output>
         </footer>
       </section>
+
+      <aside class="detail-sidebar" id="detailSidebar">
+        <div class="detail-sidebar-header">
+          <h2>事件详情</h2>
+          <button id="closeDetailBtn" class="close-detail-btn" title="隐藏详情">×</button>
+        </div>
+        <div id="detailPanel" class="detail-panel">
+          <p class="muted">选择一个节点查看事件详情。</p>
+        </div>
+      </aside>
     </main>
 
     <script type="module" src="./src/app.js"></script>
