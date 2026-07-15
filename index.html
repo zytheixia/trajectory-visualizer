@@ -43,7 +43,7 @@
         <section class="panel">
           <h2>视图</h2>
           <label class="control-line">
-            <span>数据方案</span>
+            <span>观察视角</span>
             <select id="schemeSelect">
               <option value="event_flow">事件流</option>
               <option value="tool_timeline">工具时间线</option>
@@ -56,6 +56,8 @@
               <option value="swimlane">泳道</option>
               <option value="tree">树状分支</option>
               <option value="interaction">角色交互</option>
+              <option value="waterfall">时序瀑布流</option>
+              <option value="cards">思维链卡片</option>
             </select>
           </label>
           <label class="control-line">
@@ -127,6 +129,9 @@
             <button id="zoomInBtn" type="button" title="放大">+</button>
             <button id="zoomOutBtn" type="button" title="缩小">−</button>
             <button id="zoomResetBtn" type="button" title="重置视图">⟲</button>
+          </div>
+          <div id="cardsView" class="cards-view" hidden>
+            <div class="cards-view-inner"></div>
           </div>
         </div>
 

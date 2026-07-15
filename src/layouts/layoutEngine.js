@@ -29,6 +29,7 @@ export function resolveSchemeLane(event, schemeKey) {
 export function layoutEvents({ events, layoutKey, schemeKey, width, height }) {
   if (layoutKey === "tree") return layoutTree(events, schemeKey, width, height);
   if (layoutKey === "interaction") return layoutInteraction(events, width, height);
+  if (layoutKey === "waterfall") return layoutWaterfall(events, schemeKey, width, height);
   return layoutSwimlane(events, schemeKey, width, height);
 }
 
@@ -119,3 +120,45 @@ function layoutInteraction(events, width, height) {
     };
   });
 }
+
+function layoutWaterfall(events, schemeKey, width, height) {
+  const left = 140;
+  const right = 48;
+  const top = 60;
+  const bottom = 42;
+  const usableWidth = Math.max(320, width - left - right);
+  const usableHeight = Math.max(280, height - top - bottom);
+
+  const firstTime = events[0]?.time ?? 0;
+  const endTimes = events.map((e) => e.time + e.durationMs);
+  const lastTime = Math.max(...endTimes, firstTime + 1000);
+  const totalDuration = Math.max(lastTime - firstTime, 1);
+
+  const rowGap = Math.min(40, Math.max(24, usableHeight / Math.max(events.length, 1)));
+
+  const byId = new Map(events.map((e, idx) => [String(e.id), { event: e, index: idx }]));
+  function depthFor(event, seen = new Set()) {
+    if (!event.parentId || !byId.has(String(event.parentId)) || seen.has(event.id)) return 0;
+    seen.add(event.id);
+    const parent = byId.get(String(event.parentId)).event;
+    return depthFor(parent, seen) + 1;
+  }
+
+  return events.map((event, index) => {
+    const startX = left + ((event.time - firstTime) / totalDuration) * usableWidth;
+    const endX = left + ((event.time + event.durationMs - firstTime) / totalDuration) * usableWidth;
+    const barWidth = Math.max(12, endX - startX);
+    const depth = depthFor(event);
+
+    return {
+      ...event,
+      displayLane: resolveSchemeLane(event, schemeKey),
+      treeDepth: depth,
+      x: startX,
+      y: top + index * rowGap,
+      barWidth,
+      radius: 8
+    };
+  });
+}
+

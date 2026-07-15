@@ -186,6 +186,20 @@ export class AgentTraceViewer {
         ctx.lineTo(x, 10000);
         ctx.stroke();
       });
+    } else if (layout === "waterfall") {
+      if (this.options.showGrid) {
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.08)";
+        ctx.lineWidth = 1 / this.scale;
+        const worldLeft = -this.offsetX / this.scale;
+        const worldRight = (width - this.offsetX) / this.scale;
+        const startGrid = Math.floor(worldLeft / 80) * 80;
+        for (let x = startGrid; x < worldRight; x += 80) {
+          ctx.beginPath();
+          ctx.moveTo(x, -10000);
+          ctx.lineTo(x, 10000);
+          ctx.stroke();
+        }
+      }
     }
   }
 
@@ -246,14 +260,47 @@ export class AgentTraceViewer {
         ctx.fillText(String(actor), screenX, 30);
         ctx.textAlign = "left";
       });
+    } else if (layout === "waterfall") {
+      ctx.fillStyle = "rgba(255, 255, 255, 0.94)";
+      ctx.fillRect(0, 0, width, 48);
+      ctx.strokeStyle = "rgba(226, 232, 240, 0.8)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, 48);
+      ctx.lineTo(width, 48);
+      ctx.stroke();
+      ctx.fillStyle = "#475569";
+      ctx.font = "700 12px Inter, system-ui, sans-serif";
+      ctx.fillText("时序瀑布流 / Trace Span Timeline", 20, 30);
     }
   }
 
   drawConnections(visible) {
     const ctx = this.ctx;
+    const byId = new Map(visible.map((event) => [String(event.id), event]));
+
+    if (this.options.layoutKey === "waterfall") {
+      ctx.lineWidth = 1 / this.scale;
+      ctx.strokeStyle = "rgba(148, 163, 184, 0.4)";
+      ctx.setLineDash([3, 3]);
+      for (let index = 0; index < visible.length; index += 1) {
+        const current = visible[index];
+        const previous = current.parentId && byId.has(String(current.parentId)) ? byId.get(String(current.parentId)) : null;
+        if (!previous) continue;
+        
+        ctx.beginPath();
+        // Draw vertical elbow connector from parent to child
+        ctx.moveTo(previous.x + 6 / this.scale, previous.y);
+        ctx.lineTo(previous.x + 6 / this.scale, current.y);
+        ctx.lineTo(current.x, current.y);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      return;
+    }
+
     ctx.lineWidth = 2 / this.scale;
     ctx.lineCap = "round";
-    const byId = new Map(visible.map((event) => [String(event.id), event]));
     for (let index = 0; index < visible.length; index += 1) {
       const current = visible[index];
       const previous = current.parentId && byId.has(String(current.parentId)) ? byId.get(String(current.parentId)) : visible[index - 1];
@@ -273,27 +320,98 @@ export class AgentTraceViewer {
     const lane = lanes.find((item) => item.key === event.displayLane) || lanes.find((item) => item.key === resolveSchemeLane(event, this.options.schemeKey)) || lanes[1];
     const categoryLane = laneSchemes.event_flow.find((item) => item.key === event.category);
     const statusColor = statusColors[event.status] || lane.color;
-    ctx.fillStyle = "white";
-    ctx.strokeStyle = isActive ? "#0f172a" : statusColor;
-    ctx.lineWidth = isActive ? 4 / this.scale : 3 / this.scale;
+
+    if (this.options.layoutKey === "waterfall") {
+      const barHeight = 14;
+      const halfH = barHeight / 2;
+      
+      // Draw bar background
+      ctx.fillStyle = statusColor + "1a"; // ~10% opacity tint
+      ctx.strokeStyle = isActive ? "#0f172a" : statusColor;
+      ctx.lineWidth = isActive ? 3 / this.scale : 1.5 / this.scale;
+      
+      this.drawRoundedRect(
+        event.x, 
+        event.y - halfH, 
+        event.barWidth, 
+        barHeight, 
+        4, 
+        ctx
+      );
+      
+      // Draw solid start node dot on the left of the bar
+      ctx.fillStyle = statusColor;
+      ctx.beginPath();
+      ctx.arc(event.x, event.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Write label next to the bar
+      if (this.options.showLabels && this.scale >= 0.4) {
+        const label = event.name.length > 24 ? `${event.name.slice(0, 22)}...` : event.name;
+        ctx.fillStyle = "#0f172a";
+        ctx.font = `600 ${Math.max(8, 11 / this.scale)}px Inter, system-ui, sans-serif`;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText(
+          `${label} (${formatDuration(event.durationMs)})`, 
+          event.x + event.barWidth + 8 / this.scale, 
+          event.y
+        );
+      }
+      return;
+    }
+
+    // 1. Draw outer circle
+    ctx.fillStyle = statusColor;
+    ctx.strokeStyle = isActive ? "#0f172a" : "rgba(255, 255, 255, 0.85)";
+    ctx.lineWidth = isActive ? 4 / this.scale : 2 / this.scale;
     ctx.beginPath();
     ctx.arc(event.x, event.y, event.radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = this.options.layoutKey === "interaction" && categoryLane ? categoryLane.color : statusColor;
-    ctx.beginPath();
-    ctx.arc(event.x, event.y, Math.max(2, event.radius - 6), 0, Math.PI * 2);
-    ctx.fill();
+    // 2. Draw white symbol in center
+    let symbol = "";
+    if (event.category === "input") symbol = "💬";
+    else if (event.category === "failure" || event.status === "failed") symbol = "✕";
+    else if (event.type.includes("llm") || event.type.includes("model") || event.category === "reasoning") symbol = "✦";
+    else if (event.category === "execution") symbol = "⚙";
+    else if (event.category === "observation") symbol = "✓";
 
+    if (symbol) {
+      ctx.fillStyle = "#ffffff";
+      ctx.font = `bold ${Math.max(6, 10 / this.scale)}px "Segoe UI", system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(symbol, event.x, event.y);
+    }
+
+    // 3. Draw text labels next to circle
     if (!this.options.showLabels || this.scale < 0.45) return;
     const label = event.name.length > 24 ? `${event.name.slice(0, 22)}...` : event.name;
     ctx.fillStyle = "#0f172a";
     ctx.font = `700 ${Math.max(8, 12 / this.scale)}px Inter, system-ui, sans-serif`;
-    ctx.fillText(label, event.x + 14 / this.scale, event.y - 6 / this.scale);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(label, event.x + 16 / this.scale, event.y - 4 / this.scale);
+    
     ctx.fillStyle = "#64748b";
     ctx.font = `${Math.max(7, 10 / this.scale)}px Inter, system-ui, sans-serif`;
-    ctx.fillText(formatDuration(event.durationMs), event.x + 14 / this.scale, event.y + 8 / this.scale);
+    ctx.fillText(formatDuration(event.durationMs), event.x + 16 / this.scale, event.y + 10 / this.scale);
+  }
+
+  drawRoundedRect(x, y, w, h, r, ctx) {
+    if (w < 2 * r) r = w / 2;
+    if (h < 2 * r) r = h / 2;
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
   }
 
   getConnectionColor(event, progress) {
@@ -309,11 +427,23 @@ export class AgentTraceViewer {
 
   hitTest(screenX, screenY) {
     const visible = this.visibleEvents();
+    const isWaterfall = this.options.layoutKey === "waterfall";
+
     const index = visible.findIndex((item) => {
       const nodeScreenX = item.x * this.scale + this.offsetX;
       const nodeScreenY = item.y * this.scale + this.offsetY;
-      const screenRadius = Math.max(8, item.radius * this.scale);
-      return Math.hypot(nodeScreenX - screenX, nodeScreenY - screenY) < screenRadius + 6;
+
+      if (isWaterfall) {
+        const barWidth = item.barWidth * this.scale;
+        const halfH = Math.max(8, 7 * this.scale);
+        return screenX >= nodeScreenX - 8 && 
+               screenX <= nodeScreenX + barWidth + 8 && 
+               screenY >= nodeScreenY - halfH - 6 && 
+               screenY <= nodeScreenY + halfH + 6;
+      } else {
+        const screenRadius = Math.max(8, item.radius * this.scale);
+        return Math.hypot(nodeScreenX - screenX, nodeScreenY - screenY) < screenRadius + 6;
+      }
     });
     return { index, node: index >= 0 ? visible[index] : null };
   }

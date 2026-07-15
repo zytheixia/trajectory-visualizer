@@ -72,6 +72,7 @@ function loadTrace(rawEvents, name, fieldMapping = null) {
   updateDetails(events[0]);
   viewer.setOptions(viewerOptions());
   viewer.setEvents(events);
+  draw();
 }
 
 function prepareTraceMapping(rawEvents, name, shouldAutoApply = false) {
@@ -162,14 +163,146 @@ function viewerOptions() {
 
 function updateViewerOptions() {
   viewer.setOptions(viewerOptions());
+  draw();
 }
 
 function resizeCanvas() {
   viewer.resize();
+  draw();
 }
 
 function draw() {
-  viewer.draw();
+  const layout = currentLayoutKey();
+  const canvasElement = document.querySelector("#trackCanvas");
+  const cardsView = document.querySelector("#cardsView");
+  const canvasControls = document.querySelector("#canvasControls");
+
+  if (layout === "cards") {
+    if (canvasElement) canvasElement.style.display = "none";
+    if (canvasControls) canvasControls.style.display = "none";
+    if (cardsView) {
+      cardsView.hidden = false;
+      const visibleCount = Math.max(0, Math.ceil((events.length * Number(timeSlider.value)) / 100));
+      const visible = events.slice(0, visibleCount);
+      renderCardsView(visible);
+    }
+  } else {
+    if (canvasElement) canvasElement.style.display = "block";
+    if (canvasControls) canvasControls.style.display = "flex";
+    if (cardsView) cardsView.hidden = true;
+    viewer.draw();
+  }
+}
+
+function renderCardsView(visibleEvents) {
+  const container = document.querySelector("#cardsView .cards-view-inner");
+  if (!container) return;
+
+  if (!visibleEvents.length) {
+    container.innerHTML = `<div class="muted" style="text-align:center;padding:40px 0;">当前时间段无事件，请拖动下方进度条。</div>`;
+    return;
+  }
+
+  container.innerHTML = visibleEvents.map((event) => {
+    const isLlm = event.type.includes("llm") || 
+                  event.type.includes("model") || 
+                  event.metadata?.model || 
+                  event.metadata?.prompt_tokens;
+
+    const excludeKeys = isLlm 
+      ? ["model", "provider", "prompt_tokens", "completion_tokens", "total_tokens", "tokens", "cost_usd", "cost", "temperature", "top_p", "messages", "prompt", "completion"]
+      : [];
+
+    const llmDashboardHtml = isLlm ? renderLlmDashboard(event.metadata) : "";
+    const chatBubblesHtml = isLlm && event.metadata?.messages ? renderChatBubbles(event.metadata.messages) : "";
+    
+    let promptCompletionHtml = "";
+    if (isLlm && !event.metadata?.messages) {
+      const promptText = event.metadata?.prompt || "";
+      const completionText = event.metadata?.completion || "";
+      if (promptText || completionText) {
+        promptCompletionHtml = `
+          <div class="chat-bubbles-container">
+            ${promptText ? `<div class="chat-bubble user"><span class="role">Prompt</span><div>${escapeHtml(promptText)}</div></div>` : ""}
+            ${completionText ? `<div class="chat-bubble assistant"><span class="role">Completion</span><div>${escapeHtml(completionText)}</div></div>` : ""}
+          </div>
+        `;
+      }
+    }
+
+    const metadataHtml = renderMetadata(event.metadata, excludeKeys);
+    const payloadHtml = escapeHtml(JSON.stringify(event.payload, null, 2));
+
+    const statusColor = event.status === "failed" || event.status === "error" ? "#ef4444" : event.status === "running" ? "#f59e0b" : "#10b981";
+
+    let bodyContent = "";
+    if (event.category === "execution") {
+      const cmd = event.metadata?.command || event.content || "";
+      bodyContent = `
+        <div class="card-terminal-block">
+          <div class="terminal-header">Command / Action</div>
+          <pre class="terminal-content">$ ${escapeHtml(cmd)}</pre>
+        </div>
+      `;
+    } else if (event.category === "observation") {
+      bodyContent = `
+        <div class="card-terminal-block observation">
+          <div class="terminal-header">Observation / Result</div>
+          <pre class="terminal-content">${escapeHtml(event.content || "无内容")}</pre>
+        </div>
+      `;
+    } else if (chatBubblesHtml || promptCompletionHtml) {
+      bodyContent = chatBubblesHtml + promptCompletionHtml;
+    } else {
+      bodyContent = `<p class="card-text-content">${escapeHtml(String(event.content || "无内容"))}</p>`;
+    }
+
+    const isSelected = event.index === viewer.selectedIndex;
+
+    return `
+      <div class="step-card ${event.status} ${isSelected ? 'selected' : ''}" 
+           style="border-left: 4px solid ${statusColor}" 
+           data-index="${event.index}">
+        <div class="step-card-header">
+          <div class="header-left">
+            <span class="step-index-badge">#${event.index + 1}</span>
+            <span class="step-type-pill" style="background:${categoryColor(event.category)}">${escapeHtml(typeLabel(event.type))}</span>
+            <strong class="step-name">${escapeHtml(event.name)}</strong>
+          </div>
+          <div class="header-right">
+            <span class="step-actor">${escapeHtml(event.actor || "System")}</span>
+            <span class="step-duration">${escapeHtml(formatDuration(event.durationMs))}</span>
+          </div>
+        </div>
+        
+        <div class="step-card-body">
+          ${bodyContent}
+          ${llmDashboardHtml}
+          ${metadataHtml}
+        </div>
+        
+        <div class="step-card-footer">
+          <details class="payload-details">
+            <summary>原始事件 JSON</summary>
+            <pre class="event-content">${payloadHtml}</pre>
+          </details>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  container.querySelectorAll(".step-card").forEach(card => {
+    card.addEventListener("click", (e) => {
+      if (e.target.closest("details")) return;
+      
+      const idx = parseInt(card.dataset.index);
+      viewer.selectedIndex = idx;
+      updateDetails(events[viewer.selectedIndex]);
+      
+      container.querySelectorAll(".step-card").forEach(c => c.classList.remove("selected"));
+      card.classList.add("selected");
+    });
+  });
 }
 
 function updateStats() {
@@ -215,7 +348,34 @@ function updateDetails(event) {
     return;
   }
 
-  const metadataHtml = renderMetadata(event.metadata);
+  const isLlmEvent = event.type.includes("llm") || 
+                     event.type.includes("model") || 
+                     event.metadata?.model || 
+                     event.metadata?.prompt_tokens;
+
+  const excludeKeys = isLlmEvent 
+    ? ["model", "provider", "prompt_tokens", "completion_tokens", "total_tokens", "tokens", "cost_usd", "cost", "temperature", "top_p", "max_tokens", "messages", "prompt", "completion"]
+    : [];
+
+  const llmDashboardHtml = isLlmEvent ? renderLlmDashboard(event.metadata) : "";
+  const chatBubblesHtml = isLlmEvent && event.metadata?.messages ? renderChatBubbles(event.metadata.messages) : "";
+  
+  // Prompt/Completion preview if present in metadata
+  let promptCompletionHtml = "";
+  if (isLlmEvent && !event.metadata?.messages) {
+    const promptText = event.metadata?.prompt || "";
+    const completionText = event.metadata?.completion || "";
+    if (promptText || completionText) {
+      promptCompletionHtml = `
+        <div class="chat-bubbles-container">
+          ${promptText ? `<div class="chat-bubble user"><span class="role">Prompt</span><div>${escapeHtml(promptText)}</div></div>` : ""}
+          ${completionText ? `<div class="chat-bubble assistant"><span class="role">Completion</span><div>${escapeHtml(completionText)}</div></div>` : ""}
+        </div>
+      `;
+    }
+  }
+
+  const metadataHtml = renderMetadata(event.metadata, excludeKeys);
   const payloadHtml = escapeHtml(JSON.stringify(event.payload, null, 2));
 
   detailPanel.innerHTML = `
@@ -233,12 +393,112 @@ function updateDetails(event) {
       <div><dt>父节点</dt><dd>${escapeHtml(event.parentId || "-")}</dd></div>
       <div><dt>ID</dt><dd>${escapeHtml(event.id)}</dd></div>
     </dl>
-    <pre class="event-content">${escapeHtml(String(event.content || "无内容"))}</pre>
+    
+    ${llmDashboardHtml}
+    
+    ${chatBubblesHtml || promptCompletionHtml ? (chatBubblesHtml + promptCompletionHtml) : `
+      <pre class="event-content">${escapeHtml(String(event.content || "无内容"))}</pre>
+    `}
+    
     ${metadataHtml}
     <details class="payload-details">
       <summary>原始事件</summary>
       <pre class="event-content">${payloadHtml}</pre>
     </details>
+  `;
+}
+
+function renderLlmDashboard(metadata) {
+  if (!metadata) return "";
+  const model = metadata.model || "Unknown Model";
+  const provider = metadata.provider || (model.toLowerCase().startsWith("gpt") || model.toLowerCase().startsWith("o1") ? "openai" : model.toLowerCase().startsWith("claude") ? "anthropic" : "unknown");
+  
+  // Tokens
+  const promptTokens = Number(metadata.prompt_tokens || metadata.input_tokens || 0);
+  const completionTokens = Number(metadata.completion_tokens || metadata.output_tokens || 0);
+  const totalTokens = Number(metadata.total_tokens || metadata.tokens || (promptTokens + completionTokens));
+  
+  // Cost
+  let costStr = "";
+  if (metadata.cost_usd !== undefined || metadata.cost !== undefined) {
+    const costVal = Number(metadata.cost_usd ?? metadata.cost);
+    costStr = costVal < 0.0001 ? `$${costVal.toFixed(6)}` : `$${costVal.toFixed(4)}`;
+  }
+  
+  // Token Bar width calculation
+  const totalSum = promptTokens + completionTokens || 1;
+  const promptPct = ((promptTokens / totalSum) * 100).toFixed(1);
+  const completionPct = ((completionTokens / totalSum) * 100).toFixed(1);
+
+  // Hyperparameters
+  const params = [];
+  if (metadata.temperature !== undefined) params.push(`Temp: ${metadata.temperature}`);
+  if (metadata.top_p !== undefined) params.push(`Top P: ${metadata.top_p}`);
+  if (metadata.max_tokens !== undefined) params.push(`Max Tokens: ${metadata.max_tokens}`);
+
+  const paramsHtml = params.length 
+    ? `<div class="llm-params-row">${params.map(p => `<span class="llm-param-pill">${escapeHtml(p)}</span>`).join("")}</div>`
+    : "";
+
+  return `
+    <section class="llm-dashboard">
+      <div class="llm-model-header">
+        <span class="llm-model-name">${escapeHtml(model)}</span>
+        <span class="llm-provider-badge" style="background:${provider === "openai" ? "#e0f2fe;color:#0369a1;" : provider === "anthropic" ? "#fef3c7;color:#b45309;" : "#f1f5f9;color:#475569;"}">${escapeHtml(provider)}</span>
+      </div>
+      
+      <div class="llm-metrics-grid">
+        ${totalTokens ? `
+          <div class="llm-metric-card">
+            <span class="label">Tokens</span>
+            <span class="value">${totalTokens.toLocaleString()}</span>
+          </div>
+        ` : ""}
+        ${costStr ? `
+          <div class="llm-metric-card">
+            <span class="label">估算成本</span>
+            <span class="value" style="color:#10b981;">${costStr}</span>
+          </div>
+        ` : ""}
+      </div>
+
+      ${(promptTokens || completionTokens) ? `
+        <div class="llm-token-bar-wrapper">
+          <div class="llm-token-bar-track">
+            <div class="llm-token-bar-prompt" style="width: ${promptPct}%" title="Prompt: ${promptPct}%"></div>
+            <div class="llm-token-bar-completion" style="width: ${completionPct}%" title="Completion: ${completionPct}%"></div>
+          </div>
+          <div class="llm-token-labels">
+            <span>输入: ${promptTokens.toLocaleString()} (${promptPct}%)</span>
+            <span>输出: ${completionTokens.toLocaleString()} (${completionPct}%)</span>
+          </div>
+        </div>
+      ` : ""}
+
+      ${paramsHtml}
+    </section>
+  `;
+}
+
+function renderChatBubbles(messages) {
+  if (!Array.isArray(messages)) return "";
+  
+  const bubbles = messages.map(msg => {
+    const role = msg.role || "unknown";
+    const content = msg.content || "";
+    return `
+      <div class="chat-bubble ${escapeHtml(role)}">
+        <span class="role">${escapeHtml(role)}</span>
+        <div>${escapeHtml(content)}</div>
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <div class="chat-bubbles-container">
+      <h3>对话记录</h3>
+      ${bubbles}
+    </div>
   `;
 }
 
@@ -290,8 +550,9 @@ function categoryColor(category) {
   return laneSchemes.event_flow.find((lane) => lane.key === category)?.color || laneSchemes.event_flow[1].color;
 }
 
-function renderMetadata(metadata) {
-  const entries = Object.entries(metadata || {});
+function renderMetadata(metadata, excludeKeys = []) {
+  const excludeSet = new Set(excludeKeys);
+  const entries = Object.entries(metadata || {}).filter(([key]) => !excludeSet.has(key));
   if (!entries.length) return "";
 
   const rows = entries

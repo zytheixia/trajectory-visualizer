@@ -4,6 +4,8 @@
 
 ## 使用
 
+本仓库自带一个完整 demo 页面，用来调试上传、字段映射、详情面板和多种布局：
+
 ```bash
 cd trajectory-visualizer
 npm run dev
@@ -13,11 +15,87 @@ npm run dev
 
 也可以直接打开 `index.html`，但用本地 HTTP 服务更接近部署环境。
 
+## 作为本地包接入
+
+现在先按本地源码包使用，不需要发布 npm。在其他项目的 `package.json` 里加：
+
+```json
+{
+  "dependencies": {
+    "trajectory-visualizer": "file:/home/zyt/projects/trajectory-visualizer"
+  }
+}
+```
+
+然后在接入方项目里安装依赖：
+
+```bash
+npm install
+```
+
+接入方页面只需要准备一个容器和 canvas；详情栏、配置栏、字段映射 UI 可以放在接入方自己的页面里：
+
+```html
+<div class="trace-panel">
+  <canvas id="traceCanvas"></canvas>
+</div>
+```
+
+```css
+.trace-panel {
+  width: 100%;
+  height: 600px;
+}
+
+#traceCanvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+```
+
+```js
+import { AgentTraceViewer, createMappingAdapter } from "trajectory-visualizer";
+
+const viewer = new AgentTraceViewer(document.querySelector("#traceCanvas"), {
+  layoutKey: "tree",
+  schemeKey: "event_flow",
+  onNodeClick: (node) => {
+    // 接入方自己渲染详情面板
+    console.log(node);
+  }
+});
+
+const adapter = createMappingAdapter({
+  id: "event_id",
+  type: "kind",
+  name: "title",
+  content: "message",
+  time: "started_at",
+  duration: "elapsed_ms",
+  status: "outcome",
+  parent: "parent_id",
+  actor: "agent_name",
+  metadata: "extra"
+});
+
+viewer.setEvents(adapter(rawEvents));
+```
+
+如果接入方想复用本 demo 的样式，可以额外 import：
+
+```js
+import "trajectory-visualizer/styles.css";
+```
+
+实际嵌入纯图时通常不建议直接复用整套 demo 样式，因为 `src/styles.css` 包含页面壳、侧栏、控件和卡片视图样式。长期看更合理的是把 viewer 基础样式和 demo 样式拆开。
+
 ## 代码结构
 
 ```text
 src/
-  app.js                  应用组装、DOM 事件、canvas 绘制和交互
+  index.js                本地包入口，导出 viewer、adapter、core 和配置
+  app.js                  demo 应用组装、DOM 事件、字段映射、统计和详情面板
   config/
     traceConfig.js        数据方案、字段别名、泳道和状态颜色
     sampleTraces.js       内置示例轨迹
@@ -47,7 +125,7 @@ src/
 外部项目如果只想嵌入图，可以直接使用 viewer：
 
 ```js
-import { AgentTraceViewer } from "./src/viewer/AgentTraceViewer.js";
+import { AgentTraceViewer } from "trajectory-visualizer";
 
 const viewer = new AgentTraceViewer(document.querySelector("#traceCanvas"), {
   layoutKey: "tree",
@@ -88,7 +166,7 @@ function adaptMyTrace(rawLogs) {
 如果只是字段名不同，可以使用内置 mapping adapter：
 
 ```js
-import { createMappingAdapter } from "./src/adapters/index.js";
+import { createMappingAdapter } from "trajectory-visualizer";
 
 const adapter = createMappingAdapter({
   id: "event_id",
