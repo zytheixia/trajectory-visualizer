@@ -18,6 +18,7 @@ export class AgentTraceViewer {
     this.lastMouseX = 0;
     this.lastMouseY = 0;
     this.hasDragged = false;
+    this.disposers = [];
     this.options = {
       layoutKey: "swimlane",
       schemeKey: "event_flow",
@@ -25,6 +26,7 @@ export class AgentTraceViewer {
       showLabels: true,
       showGrid: true,
       progress: 100,
+      worldWidth: null,
       onNodeClick: () => {},
       onNodeHover: () => {},
       onRender: () => {},
@@ -49,7 +51,10 @@ export class AgentTraceViewer {
   }
 
   resize() {
-    const rect = this.canvas.parentElement.getBoundingClientRect();
+    const parent = this.canvas.parentElement;
+    if (!parent) return;
+    const rect = parent.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
     const dpr = window.devicePixelRatio || 1;
     this.canvas.width = Math.max(1, Math.floor(rect.width * dpr));
     this.canvas.height = Math.max(1, Math.floor(rect.height * dpr));
@@ -63,6 +68,30 @@ export class AgentTraceViewer {
     this.offsetY = 0;
   }
 
+  destroy() {
+    this.disposers.forEach((dispose) => dispose());
+    this.disposers = [];
+  }
+
+  on(target, type, handler, options) {
+    target.addEventListener(type, handler, options);
+    this.disposers.push(() => target.removeEventListener(type, handler, options));
+  }
+
+  getWorldWidth(viewportWidth) {
+    const configured = Number(this.options.worldWidth);
+    return Math.max(viewportWidth, Number.isFinite(configured) ? configured : viewportWidth);
+  }
+
+  clampViewport() {
+    const width = this.canvas.clientWidth;
+    const height = this.canvas.clientHeight;
+    const worldWidth = this.getWorldWidth(width);
+    const minOffsetX = Math.min(0, width - worldWidth * this.scale - 24);
+    this.offsetX = Math.max(minOffsetX, Math.min(24, this.offsetX));
+    this.offsetY = Math.max(-height * 0.45, Math.min(height * 0.45, this.offsetY));
+  }
+
   zoomAt(screenX, screenY, factor) {
     const worldX = (screenX - this.offsetX) / this.scale;
     const worldY = (screenY - this.offsetY) / this.scale;
@@ -70,6 +99,7 @@ export class AgentTraceViewer {
     this.offsetX = screenX - worldX * newScale;
     this.offsetY = screenY - worldY * newScale;
     this.scale = newScale;
+    this.clampViewport();
     this.draw();
   }
 
@@ -97,6 +127,8 @@ export class AgentTraceViewer {
     const width = this.canvas.clientWidth;
     const height = this.canvas.clientHeight;
     const ctx = this.ctx;
+    const worldWidth = this.getWorldWidth(width);
+    this.clampViewport();
     ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = "#f8fafc";
     ctx.fillRect(0, 0, width, height);
@@ -105,7 +137,7 @@ export class AgentTraceViewer {
       events: this.events,
       layoutKey: this.options.layoutKey,
       schemeKey: this.options.schemeKey,
-      width,
+      width: worldWidth,
       height
     });
     const visible = this.visibleEvents();
@@ -449,7 +481,7 @@ export class AgentTraceViewer {
   }
 
   bindEvents() {
-    this.canvas.addEventListener("pointerdown", (event) => {
+    this.on(this.canvas, "pointerdown", (event) => {
       const rect = this.canvas.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
@@ -464,7 +496,7 @@ export class AgentTraceViewer {
       this.canvas.style.cursor = "grabbing";
     });
 
-    this.canvas.addEventListener("pointermove", (event) => {
+    this.on(this.canvas, "pointermove", (event) => {
       const rect = this.canvas.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
@@ -474,6 +506,7 @@ export class AgentTraceViewer {
         const dy = event.clientY - this.lastMouseY;
         this.offsetX += dx;
         this.offsetY += dy;
+        this.clampViewport();
         this.lastMouseX = event.clientX;
         this.lastMouseY = event.clientY;
         if (Math.hypot(x - this.dragStartX, y - this.dragStartY) > 4) this.hasDragged = true;
@@ -488,7 +521,7 @@ export class AgentTraceViewer {
       this.draw();
     });
 
-    this.canvas.addEventListener("pointerup", (event) => {
+    this.on(this.canvas, "pointerup", (event) => {
       if (!this.isDragging) return;
       this.canvas.releasePointerCapture(event.pointerId);
       this.isDragging = false;
@@ -506,7 +539,7 @@ export class AgentTraceViewer {
       }
     });
 
-    this.canvas.addEventListener("pointercancel", (event) => {
+    this.on(this.canvas, "pointercancel", (event) => {
       if (this.isDragging) {
         this.canvas.releasePointerCapture(event.pointerId);
         this.isDragging = false;
@@ -514,14 +547,22 @@ export class AgentTraceViewer {
       }
     });
 
-    this.canvas.addEventListener(
+    this.on(
+      this.canvas,
       "wheel",
       (event) => {
         event.preventDefault();
         const rect = this.canvas.getBoundingClientRect();
         const mouseX = event.clientX - rect.left;
         const mouseY = event.clientY - rect.top;
-        this.zoomAt(mouseX, mouseY, event.deltaY < 0 ? 1.08 : 1 / 1.08);
+        if (event.ctrlKey || event.metaKey) {
+          this.zoomAt(mouseX, mouseY, event.deltaY < 0 ? 1.08 : 1 / 1.08);
+          return;
+        }
+        const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+        this.offsetX -= delta;
+        this.clampViewport();
+        this.draw();
       },
       { passive: false }
     );
