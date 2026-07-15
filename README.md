@@ -15,6 +15,15 @@ npm run dev
 
 也可以直接打开 `index.html`，但用本地 HTTP 服务更接近部署环境。
 
+## 文档
+
+详细设计和接入方式放在 `docs/` 目录单独维护：
+
+- [整体架构](./docs/architecture.md)
+- [数据契约](./docs/data-contracts.md)
+- [单轨迹使用方式](./docs/single-trace.md)
+- [多轨迹对比使用方式](./docs/comparison-trace.md)
+
 ## 作为本地包接入
 
 现在先按本地源码包使用，不需要发布 npm。在其他项目的 `package.json` 里加：
