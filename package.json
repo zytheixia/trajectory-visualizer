@@ -20,10 +20,14 @@
     "README.md",
     "package.json"
   ],
+  "bin": {
+    "visualize": "./bin/visualize.js"
+  },
   "scripts": {
     "check": "find src -name '*.js' -print0 | xargs -0 -n1 node --check",
-    "dev": "python3 -m http.server 5173",
-    "start": "python3 -m http.server 5173"
+    "dev": "node ./scripts/server.js",
+    "open": "node ./bin/visualize.js",
+    "start": "node ./scripts/server.js"
   },
   "types": "./src/index.d.ts"
 }

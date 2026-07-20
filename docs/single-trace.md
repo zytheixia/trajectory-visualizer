@@ -152,15 +152,33 @@ viewer.setOptions({
 });
 ```
 
-## 展示方案
+## 展示方案 (schemeKey) 与观察视角
 
-`schemeKey` 决定泳道、字段映射提示和展示语义：
+`schemeKey` 决定图表采用的泳道结构与分析观察视角。系统内置三种观察视角：
 
-| schemeKey | 用途 |
-| --- | --- |
-| `event_flow` | 通用 agent 运行轨迹。 |
-| `tool_timeline` | 强调工具调用、命令执行、结果和错误。 |
-| `llm_trace` | 强调模型调用、prompt、token、cost、latency。 |
+### 1. 通用事件流视角 (`event_flow`)
+宏观展示 Agent 的完整生命周期流程，包含 5 条标准泳道：
+* **`Input` (输入)**：User Prompt、任务初始化请求。
+* **`Reasoning` (思考与推理)**：LLM 内部 CoT 推理、思考逻辑、计划制定。
+* **`Execution` (工具执行)**：Tool 工具调用、Shell 命令执行、文件修改。
+* **`Observation` (观察与结果)**：工具返回结果、终端输出、环境反馈。
+* **`Failure` (异常处理)**：运行报错、命令失败、逻辑中断。
+
+### 2. 工具时间线视角 (`tool_timeline`)
+微观聚焦于 Agent 调用了哪些 Tool、执行了什么命令、改了什么文件与返回结果，包含 4 条泳道：
+* **`Context` (上下文)**：User 任务 Prompt、Thinking 思考与调起工具前的上下文。
+* **`Tool / Command` (工具与命令)**：具体的 Tool 调用节点，如 `Bash`、`Edit`、`Read`、`Grep`。
+* **`Result` (执行结果)**：工具返回的结果与终端输出。
+* **`Failure` (异常)**：工具执行失败或命令返回非 0 状态码。
+
+### 3. LLM 调用链视角 (`llm_trace`)
+聚焦于 **大模型 (LLM) 与上下文窗口 (Context Window)** 的交互生命周期，包含 6 条泳道：
+* **`Prompt` (提示词)**：User 原始 Prompt、System 指令与任务定义。
+* **`Context` (上下文注入)**：RAG 检索片段、`Read` 读到的代码、`Grep` 搜索结果、历史记忆等喂给上下文窗口的数据。
+* **`Model` (大模型思考与生成)**：LLM 内部的 **`Thinking` 深度思考**、CoT 推理与模型 API 调用。
+* **`Check` (安全/校验防线)**：Guardrails 内容审核、格式校验 (JSON Validator)。
+* **`Output` (最终输出)**：LLM 吐出的 **`Agent Response` 最终答复**。
+* **`Failure` (异常熔断)**：429 Rate Limit、Context Window 溢出或模型拒绝生成。
 
 ```js
 viewer.setOptions({

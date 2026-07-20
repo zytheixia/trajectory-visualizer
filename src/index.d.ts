@@ -23,9 +23,12 @@ export type ViewerOptions = {
   showGrid?: boolean;
   progress?: number;
   worldWidth?: number | null;
-  onNodeClick?: (node: TraceEvent, context: unknown) => void;
+  onNodeClick?: (node: TraceEvent, traceId?: string) => void;
   onNodeHover?: (node: TraceEvent | null, context: unknown) => void;
   onRender?: (node: TraceEvent | null, context: unknown) => void;
+  selectedEvents?: TraceEvent[];
+  traceSelectedEvents?: Record<string, TraceEvent[]>;
+  onRangeClick?: (traceId: string, e1: TraceEvent | null, e2: TraceEvent | null) => void;
 };
 
 export class AgentTraceViewer {
@@ -39,6 +42,76 @@ export class AgentTraceViewer {
   resetZoom(): void;
   destroy(): void;
 }
+
+export class TraceComparisonViewer {
+  constructor(canvas: HTMLCanvasElement | string, options?: ViewerOptions);
+  setComparison(comparison: TraceComparison, fieldMapping?: FieldMapping): void;
+  setOptions(options: ViewerOptions): void;
+  resize(): void;
+  draw(): void;
+  zoomIn(): void;
+  zoomOut(): void;
+  resetZoom(): void;
+  destroy(): void;
+}
+
+export type EventRef = {
+  traceId: string;
+  eventId: string;
+  event?: TraceEvent;
+};
+
+export type ComparedTrace = {
+  traceId: string;
+  name: string;
+  events: TraceEvent[];
+  metadata?: Record<string, unknown>;
+};
+
+export type ComparisonAnchor = {
+  id: string;
+  label: string;
+  kind: string;
+  eventRefs: EventRef[];
+  required?: boolean;
+  confidence?: number;
+  metadata?: Record<string, unknown>;
+};
+
+export type ComparisonSegment = {
+  id: string;
+  label: string;
+  kind: string;
+  eventRefs: EventRef[];
+  anchorIds?: string[];
+  severity?: string;
+  summary?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type ComparisonFinding = {
+  id: string;
+  title: string;
+  description?: string;
+  kind: string;
+  eventRefs: EventRef[];
+  score?: number;
+  severity?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type TraceComparison = {
+  id: string;
+  metrics?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  traces: ComparedTrace[];
+  anchors: ComparisonAnchor[];
+  segments?: ComparisonSegment[];
+  findings?: ComparisonFinding[];
+  getEvent?: (traceId: string, eventId: string) => TraceEvent | undefined;
+};
+
+export function normalizeComparison(rawComparison: unknown, fieldMapping?: FieldMapping): TraceComparison;
 
 export type FieldMapping = Record<string, string | string[]>;
 export function createMappingAdapter(fieldMapping?: FieldMapping): (rawEvents: unknown[]) => TraceEvent[];
@@ -59,3 +132,28 @@ export const visualizationSchemes: Record<string, unknown>;
 export function activeLanes(schemeKey: string): unknown[];
 export function layoutEvents(options: { events: TraceEvent[]; layoutKey: string; schemeKey: string; width: number; height: number }): TraceEvent[];
 export function resolveSchemeLane(event: TraceEvent, schemeKey: string): string;
+
+export type PositionedTrace = {
+  traceId: string;
+  name: string;
+  events: (TraceEvent & { x: number; y: number; radius: number })[];
+  y: number;
+};
+
+export type PositionedAnchor = ComparisonAnchor & {
+  x: number;
+};
+
+export type PositionedSegment = ComparisonSegment & {
+  startX: number;
+  endX: number;
+};
+
+export type ComparisonLayoutResult = {
+  positionedTraces: PositionedTrace[];
+  positionedAnchors: PositionedAnchor[];
+  positionedSegments: PositionedSegment[];
+  traceYPositions: number[];
+};
+
+export function layoutComparison(options: { comparison: TraceComparison; width: number; height: number }): ComparisonLayoutResult;

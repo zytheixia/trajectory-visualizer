@@ -4,15 +4,18 @@ import {
   visualizationSchemes
 } from "./config/traceConfig.js";
 import { sampleTraces } from "./config/sampleTraces.js";
-import { createMappingAdapter } from "./adapters/index.js";
+import { sampleComparisons } from "./config/sampleComparisons.js";
+import { adapters, createMappingAdapter } from "./adapters/index.js";
 import { discoverFields, isPlainObject, parseTrace } from "./core/traceModel.js";
-import { AgentTraceViewer } from "./viewer/AgentTraceViewer.js";
+import { AgentTraceViewer } from "./viewer/single/AgentTraceViewer.js";
+import { TraceComparisonViewer } from "./viewer/multi/TraceComparisonViewer.js";
 
 const canvas = document.querySelector("#trackCanvas");
 const fileInput = document.querySelector("#fileInput");
 const sampleSelect = document.querySelector("#sampleSelect");
 const loadSampleBtn = document.querySelector("#loadSampleBtn");
 const clearBtn = document.querySelector("#clearBtn");
+const adapterSelect = document.querySelector("#adapterSelect");
 const schemeSelect = document.querySelector("#schemeSelect");
 const layoutSelect = document.querySelector("#layoutSelect");
 const colorMode = document.querySelector("#colorMode");
@@ -32,11 +35,26 @@ const playBtn = document.querySelector("#playBtn");
 const timeSlider = document.querySelector("#timeSlider");
 const timeOutput = document.querySelector("#timeOutput");
 
+// New Mode & Findings Selector
+const modeSelect = document.querySelector("#modeSelect");
+const schemeSelectLine = document.querySelector("#schemeSelectLine");
+const layoutSelectLine = document.querySelector("#layoutSelectLine");
+const findingsPanel = document.querySelector("#findingsPanel");
+const findingsList = document.querySelector("#findingsList");
+
+let currentMode = "single"; // "single" | "compare"
+let activeComparison = null;
 let events = [];
 let playTimer = null;
 let pendingRawEvents = [];
 let pendingTraceName = "";
 let discoveredFields = [];
+
+// Focus/Crop state variables
+let traceCropRanges = {};
+let traceSelectedEvents = {};
+let originalEvents = null;
+let originalComparison = null;
 
 const viewer = new AgentTraceViewer(canvas, {
   layoutKey: currentLayoutKey(),
@@ -45,13 +63,57 @@ const viewer = new AgentTraceViewer(canvas, {
   showLabels: showLabels.checked,
   showGrid: showGrid.checked,
   progress: Number(timeSlider.value),
-  onRender: (lastVisible) => updateTimelineLabel(lastVisible),
-  onNodeHover: (node, context) => updateTooltip(node, context),
+  onRender: (lastVisible) => {
+    if (currentMode === "single") updateTimelineLabel(lastVisible);
+  },
+  onNodeHover: (node, context) => {
+    if (currentMode === "single") updateTooltip(node, context);
+  },
   onNodeClick: (node) => {
-    updateDetails(node);
-    openDetailSidebar();
+    if (currentMode === "single") {
+      handleNodeSelection(node, "single");
+      updateDetails(node);
+      openDetailSidebar();
+    }
+  },
+  onRangeClick: (traceId, e1, e2) => {
+    if (currentMode === "single") {
+      handleRangeClick(traceId, e1, e2);
+    }
   }
 });
+
+const comparisonViewer = new TraceComparisonViewer(canvas, {
+  progress: Number(timeSlider.value),
+  showLabels: showLabels.checked,
+  showGrid: showGrid.checked,
+  onRender: (lastVisible) => {
+    if (currentMode === "compare") updateTimelineLabel(lastVisible);
+  },
+  onNodeHover: (node, context) => {
+    if (currentMode === "compare") updateTooltip(node, context);
+  },
+  onNodeClick: (node, traceId) => {
+    if (currentMode === "compare") {
+      handleNodeSelection(node, traceId);
+      updateDetails(node);
+      openDetailSidebar();
+    }
+  },
+  onRangeClick: (traceId, e1, e2) => {
+    if (currentMode === "compare") {
+      handleRangeClick(traceId, e1, e2);
+    }
+  },
+  onTraceResetClick: (traceId) => {
+    if (currentMode === "compare") {
+      resetTraceCrop(traceId);
+    }
+  }
+});
+
+viewer.enabled = true;
+comparisonViewer.enabled = false;
 
 function currentSchemeKey() {
   return schemeSelect.value || "event_flow";
@@ -162,12 +224,30 @@ function viewerOptions() {
 }
 
 function updateViewerOptions() {
-  viewer.setOptions(viewerOptions());
+  if (currentMode === "compare") {
+    comparisonViewer.setOptions({
+      progress: Number(timeSlider.value),
+      showLabels: showLabels.checked,
+      showGrid: showGrid.checked,
+      colorMode: colorMode.value,
+      traceSelectedEvents: traceSelectedEvents,
+      traceCropRanges: traceCropRanges
+    });
+  } else {
+    viewer.setOptions({
+      ...viewerOptions(),
+      selectedEvents: traceSelectedEvents["single"] || []
+    });
+  }
   draw();
 }
 
 function resizeCanvas() {
-  viewer.resize();
+  if (currentMode === "compare") {
+    comparisonViewer.resize();
+  } else {
+    viewer.resize();
+  }
   draw();
 }
 
@@ -176,6 +256,14 @@ function draw() {
   const canvasElement = document.querySelector("#trackCanvas");
   const cardsView = document.querySelector("#cardsView");
   const canvasControls = document.querySelector("#canvasControls");
+
+  if (currentMode === "compare") {
+    if (canvasElement) canvasElement.style.display = "block";
+    if (canvasControls) canvasControls.style.display = "flex";
+    if (cardsView) cardsView.hidden = true;
+    comparisonViewer.draw();
+    return;
+  }
 
   if (layout === "cards") {
     if (canvasElement) canvasElement.style.display = "none";
@@ -406,6 +494,16 @@ function updateDetails(event) {
       <pre class="event-content">${payloadHtml}</pre>
     </details>
   `;
+
+  // Append crop guide tooltip to detail panel
+  const container = document.createElement("div");
+  container.innerHTML = `
+    <div class="crop-tip" style="margin-top: 16px; padding: 10px; background: #eff6ff; border: 1px dashed #bfdbfe; border-radius: 4px; font-size: 11px; color: #1e40af; line-height: 1.5;">
+      💡 <strong>局部聚焦提示</strong>：<br>
+      在画布上选择<b>两个不同的节点</b>，它们之间会以蓝色虚线和背景高亮。点击高亮区域即可立刻聚焦该区间。
+    </div>
+  `;
+  detailPanel.appendChild(container);
 }
 
 function renderLlmDashboard(metadata) {
@@ -604,12 +702,63 @@ function clearTrace() {
   updateDetails(null);
   stopPlayback();
   viewer.setEvents([]);
+  clearCropState();
+}
+
+function isMultiTraceData(parsed) {
+  if (!parsed || typeof parsed !== "object") return false;
+  if (Array.isArray(parsed.traces) && parsed.traces.length > 1) return true;
+  if (parsed.comparison && Array.isArray(parsed.comparison.traces) && parsed.comparison.traces.length > 1) return true;
+  if (Array.isArray(parsed) && parsed.length > 1 && parsed[0] && typeof parsed[0] === "object" && (parsed[0].traceId || Array.isArray(parsed[0].events))) return true;
+  return false;
+}
+
+function currentAdapterId() {
+  return adapterSelect ? adapterSelect.value : "auto";
+}
+
+function applySelectedAdapter(rawEvents, options = {}) {
+  const adapterId = currentAdapterId();
+  const selectedAdapter = adapters[adapterId] || adapters.auto;
+  return selectedAdapter.transform(rawEvents, options);
+}
+
+function processIncomingTraceData(rawContent, fileName, shouldAutoApply = true) {
+  let parsedData;
+  if (typeof rawContent === "string") {
+    try {
+      parsedData = JSON.parse(rawContent.trim());
+    } catch {
+      parsedData = rawContent;
+    }
+  } else {
+    parsedData = rawContent;
+  }
+
+  if (isMultiTraceData(parsedData)) {
+    modeSelect.value = "compare";
+    modeSelect.dispatchEvent(new Event("change"));
+    loadComparison(parsedData.comparison || parsedData, parsedData.name || fileName);
+  } else {
+    modeSelect.value = "single";
+    modeSelect.dispatchEvent(new Event("change"));
+    const rawEventsList = parseTrace(typeof rawContent === "string" ? rawContent : JSON.stringify(rawContent));
+    const adaptedEvents = applySelectedAdapter(rawEventsList);
+    prepareTraceMapping(adaptedEvents, fileName, shouldAutoApply);
+  }
+}
+
+if (adapterSelect) {
+  adapterSelect.addEventListener("change", () => {
+    if (pendingRawEvents && pendingRawEvents.length > 0) {
+      processIncomingTraceData(pendingRawEvents, pendingTraceName, true);
+    }
+  });
 }
 
 async function handleFile(file) {
   const text = await file.text();
-  const rawEvents = parseTrace(text);
-  prepareTraceMapping(rawEvents, file.name);
+  processIncomingTraceData(text, file.name, true);
 }
 
 function stopPlayback() {
@@ -629,8 +778,7 @@ fileInput.addEventListener("change", async (event) => {
 });
 
 loadSampleBtn.addEventListener("click", () => {
-  const sample = sampleTraces[sampleSelect.value] || sampleTraces.debug;
-  prepareTraceMapping(sample.events, sample.name, true);
+  loadSelectedSample();
 });
 
 clearBtn.addEventListener("click", clearTrace);
@@ -639,6 +787,7 @@ applyMappingBtn.addEventListener("click", applyCurrentMapping);
 
 [colorMode, showLabels, showGrid, timeSlider].forEach((control) => {
   control.addEventListener("input", updateViewerOptions);
+  control.addEventListener("change", updateViewerOptions);
 });
 
 layoutSelect.addEventListener("change", () => {
@@ -673,9 +822,18 @@ const zoomOutBtn = document.querySelector("#zoomOutBtn");
 const zoomResetBtn = document.querySelector("#zoomResetBtn");
 
 if (zoomInBtn && zoomOutBtn && zoomResetBtn) {
-  zoomInBtn.addEventListener("click", () => viewer.zoomIn());
-  zoomOutBtn.addEventListener("click", () => viewer.zoomOut());
-  zoomResetBtn.addEventListener("click", () => viewer.resetZoom());
+  zoomInBtn.addEventListener("click", () => {
+    if (currentMode === "compare") comparisonViewer.zoomIn();
+    else viewer.zoomIn();
+  });
+  zoomOutBtn.addEventListener("click", () => {
+    if (currentMode === "compare") comparisonViewer.zoomOut();
+    else viewer.zoomOut();
+  });
+  zoomResetBtn.addEventListener("click", () => {
+    if (currentMode === "compare") comparisonViewer.resetZoom();
+    else viewer.resetZoom();
+  });
 }
 
 // Close details sidebar controls
@@ -692,11 +850,334 @@ if (closeDetailBtn && detailSidebar && appShell) {
 }
 
 sampleSelect.addEventListener("change", () => {
-  const sample = sampleTraces[sampleSelect.value] || sampleTraces.debug;
-  prepareTraceMapping(sample.events, sample.name, true);
+  loadSelectedSample();
 });
+
+function updateSampleSelectOptions() {
+  if (currentMode === "compare") {
+    sampleSelect.innerHTML = `
+      <option value="debugging_comparison">代码修复任务对比</option>
+    `;
+  } else {
+    sampleSelect.innerHTML = `
+      <option value="debug">调试修复</option>
+      <option value="minimal">最小字段</option>
+      <option value="aliases">字段别名</option>
+      <option value="llm">LLM 调用</option>
+      <option value="browser">浏览器 Agent</option>
+      <option value="business">业务审批</option>
+    `;
+  }
+}
+
+function loadSelectedSample() {
+  clearCropState();
+  if (currentMode === "compare") {
+    const sample = sampleComparisons[sampleSelect.value] || sampleComparisons.debugging_comparison;
+    loadComparison(sample.comparison, sample.name);
+  } else {
+    const sample = sampleTraces[sampleSelect.value] || sampleTraces.debug;
+    prepareTraceMapping(sample.events, sample.name, true);
+  }
+}
+
+function loadComparison(comp, name) {
+  activeComparison = comp;
+  events = []; // Clear single trace events
+  timeSlider.value = "100";
+  trackName.textContent = name;
+  trackMeta.textContent = `包含 ${comp.traces.length} 条对比轨迹`;
+  emptyState.hidden = true;
+  mappingPanel.hidden = true;
+  
+  renderFindingsPanel(comp.findings || []);
+  updateStatsForComparison(comp);
+  comparisonViewer.setComparison(comp);
+  draw();
+}
+
+function updateStatsForComparison(comp) {
+  statsGrid.querySelectorAll("dt").forEach((node, index) => {
+    const labels = ["轨迹数", "里程碑", "差异发现", "均耗时"];
+    node.textContent = labels[index];
+  });
+  
+  const values = [
+    comp.traces.length.toLocaleString("zh-CN"),
+    (comp.anchors || []).length.toLocaleString("zh-CN"),
+    (comp.findings || []).length.toLocaleString("zh-CN"),
+    formatDuration(comp.metrics?.avg_duration_ms || 0)
+  ];
+  
+  statsGrid.querySelectorAll("dd").forEach((node, index) => {
+    node.textContent = values[index];
+  });
+}
+
+function renderFindingsPanel(findings) {
+  findingsPanel.hidden = false;
+  if (!findings || findings.length === 0) {
+    findingsList.innerHTML = `<p class="muted">未发现明显异常或差异。</p>`;
+    return;
+  }
+  
+  findingsList.innerHTML = findings.map(finding => {
+    const severityClass = finding.severity === "critical" ? "danger" : finding.severity === "warning" ? "warn" : "info";
+    const badge = finding.severity === "critical" ? "✕" : finding.severity === "warning" ? "!" : "i";
+    
+    return `
+      <div class="finding-card ${severityClass}" data-id="${finding.id}">
+        <div class="finding-header">
+          <span class="finding-badge">${badge}</span>
+          <strong>${escapeHtml(finding.title)}</strong>
+        </div>
+        <p class="finding-desc">${escapeHtml(finding.description)}</p>
+      </div>
+    `;
+  }).join("");
+  
+  findingsList.querySelectorAll(".finding-card").forEach(card => {
+    card.addEventListener("click", () => {
+      const id = card.dataset.id;
+      const finding = findings.find(f => f.id === id);
+      if (finding && finding.eventRefs.length > 0) {
+        const firstRef = finding.eventRefs[0];
+        comparisonViewer.selectedTraceId = firstRef.traceId;
+        comparisonViewer.selectedEventId = firstRef.eventId;
+        
+        const event = comparisonViewer.comparison.getEvent(firstRef.traceId, firstRef.eventId);
+        if (event) {
+          updateDetails(event);
+          openDetailSidebar();
+        }
+        comparisonViewer.draw();
+      }
+    });
+  });
+}
+
+modeSelect.addEventListener("change", () => {
+  currentMode = modeSelect.value;
+  clearCropState();
+  
+  // Toggle enabled states of viewers
+  viewer.enabled = (currentMode === "single");
+  comparisonViewer.enabled = (currentMode === "compare");
+  
+  updateSampleSelectOptions();
+  
+  if (currentMode === "compare") {
+    if (schemeSelectLine) schemeSelectLine.hidden = true;
+    if (layoutSelectLine) layoutSelectLine.hidden = true;
+    mappingPanel.hidden = true;
+    loadSelectedSample();
+  } else {
+    if (schemeSelectLine) schemeSelectLine.hidden = false;
+    if (layoutSelectLine) layoutSelectLine.hidden = false;
+    findingsPanel.hidden = true;
+    loadSelectedSample();
+  }
+});
+
+function applyCrop() {
+  const resetCropBtn = document.querySelector("#resetCropBtn");
+  
+  // Collect all crop description labels
+  const activeCrops = Object.entries(traceCropRanges)
+    .filter(([_, range]) => range && range.startEvent && range.endEvent);
+  
+  if (activeCrops.length === 0) {
+    if (resetCropBtn) resetCropBtn.style.display = "none";
+    if (currentMode === "compare") {
+      if (originalComparison) {
+        const comp = originalComparison;
+        originalComparison = null;
+        loadComparison(comp, comp.id === "comp-debug-001" ? "代码修复任务对比 (Run A vs Run B vs Run C)" : comp.id);
+      }
+    } else {
+      if (originalEvents && originalEvents.length > 0) {
+        const orig = originalEvents;
+        originalEvents = null;
+        loadTrace(orig.map(e => e.payload), "Agent 调试示例");
+      }
+    }
+    return;
+  }
+  
+  if (resetCropBtn) resetCropBtn.style.display = "inline-flex";
+  
+  if (currentMode === "compare") {
+    if (!originalComparison) {
+      originalComparison = activeComparison;
+    }
+    
+    // Crop events inside each trace independently!
+    const croppedTraces = originalComparison.traces.map(trace => {
+      const range = traceCropRanges[trace.traceId];
+      if (!range) return trace;
+      
+      const t1 = range.startEvent.time;
+      const t2 = range.endEvent.time;
+      const minTime = Math.min(t1, t2);
+      const maxTime = Math.max(t1, t2);
+      
+      const filteredEvents = trace.events.filter(e => e.time >= minTime && e.time <= maxTime);
+      return {
+        ...trace,
+        events: filteredEvents
+      };
+    });
+    
+    const croppedComparison = {
+      ...originalComparison,
+      traces: croppedTraces
+    };
+    
+    loadComparison(croppedComparison, `🔍 聚焦对比：${originalComparison.metrics?.total_traces || 3}轨迹`);
+  } else {
+    if (!originalEvents || originalEvents.length === 0) {
+      originalEvents = [...events];
+    }
+    
+    const range = traceCropRanges["single"];
+    if (range) {
+      const t1 = range.startEvent.time;
+      const t2 = range.endEvent.time;
+      const minTime = Math.min(t1, t2);
+      const maxTime = Math.max(t1, t2);
+      const croppedEvents = originalEvents.filter(e => e.time >= minTime && e.time <= maxTime);
+      loadTrace(croppedEvents.map(e => e.payload), `🔍 聚焦轨迹：${originalEvents[0]?.name || "单轨迹"}`);
+    }
+  }
+}
+
+function resetCrop() {
+  traceCropRanges = {};
+  traceSelectedEvents = {};
+  const resetCropBtn = document.querySelector("#resetCropBtn");
+  if (resetCropBtn) resetCropBtn.style.display = "none";
+  
+  if (currentMode === "compare") {
+    if (originalComparison) {
+      const comp = originalComparison;
+      originalComparison = null;
+      loadComparison(comp, comp.id === "comp-debug-001" ? "代码修复任务对比 (Run A vs Run B vs Run C)" : comp.id);
+    }
+  } else {
+    if (originalEvents && originalEvents.length > 0) {
+      const orig = originalEvents;
+      originalEvents = null;
+      loadTrace(orig.map(e => e.payload), "Agent 调试示例");
+    }
+  }
+}
+
+function clearCropState() {
+  traceCropRanges = {};
+  traceSelectedEvents = {};
+  originalEvents = null;
+  originalComparison = null;
+  const resetCropBtn = document.querySelector("#resetCropBtn");
+  if (resetCropBtn) resetCropBtn.style.display = "none";
+}
+
+function handleNodeSelection(node, traceId = "single") {
+  if (!traceSelectedEvents[traceId]) {
+    traceSelectedEvents[traceId] = [];
+  }
+  
+  const selected = traceSelectedEvents[traceId];
+  if (selected.length === 0) {
+    traceSelectedEvents[traceId] = [node];
+  } else if (selected.length === 1) {
+    const prev = selected[0];
+    const isSame = prev.id === node.id;
+    if (isSame) {
+      traceSelectedEvents[traceId] = [];
+    } else {
+      selected.push(node);
+    }
+  } else {
+    traceSelectedEvents[traceId] = [node];
+  }
+  updateViewerOptions();
+}
+
+function handleRangeClick(traceId = "single", e1, e2) {
+  if (e1 && e2) {
+    if (!traceCropRanges[traceId]) {
+      traceCropRanges[traceId] = {};
+    }
+    traceCropRanges[traceId] = { startEvent: e1, endEvent: e2 };
+    applyCrop();
+    updateViewerOptions();
+  } else {
+    traceSelectedEvents[traceId] = [];
+    updateViewerOptions();
+  }
+}
+
+function resetTraceCrop(traceId) {
+  if (traceCropRanges[traceId]) {
+    delete traceCropRanges[traceId];
+    delete traceSelectedEvents[traceId];
+    applyCrop();
+    updateViewerOptions();
+  }
+}
+
+// Bind reset button
+document.querySelector("#resetCropBtn").addEventListener("click", resetCrop);
+
+// Fullscreen Toggle Controls
+const fullscreenBtn = document.querySelector("#fullscreenBtn");
+const workspace = document.querySelector(".workspace");
+
+if (fullscreenBtn && workspace) {
+  fullscreenBtn.addEventListener("click", () => {
+    if (!document.fullscreenElement) {
+      workspace.requestFullscreen().catch(err => {
+        console.error(`Error attempting to enable fullscreen: ${err.message}`);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  });
+
+  document.addEventListener("fullscreenchange", () => {
+    setTimeout(resizeCanvas, 50);
+  });
+}
 
 window.addEventListener("resize", resizeCanvas);
 
 // Initialize
-prepareTraceMapping(sampleTraces.debug.events, sampleTraces.debug.name, true);
+updateSampleSelectOptions();
+
+const urlParams = new URLSearchParams(window.location.search);
+const cliFilePath = urlParams.get("file");
+const cliAdapter = urlParams.get("adapter");
+
+if (cliAdapter && adapterSelect && adapters[cliAdapter]) {
+  adapterSelect.value = cliAdapter;
+}
+
+if (cliFilePath) {
+  if (trackMeta) trackMeta.textContent = `正在通过命令行载入文件: ${cliFilePath.split("/").pop()}...`;
+  fetch(`/api/load-file?path=${encodeURIComponent(cliFilePath)}`)
+    .then(res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      return res.text();
+    })
+    .then(rawContent => {
+      const fileName = cliFilePath.split("/").pop() || "命令行轨迹文件";
+      processIncomingTraceData(rawContent, fileName, true);
+    })
+    .catch(err => {
+      console.error("CLI file auto-load error:", err);
+      if (trackMeta) trackMeta.textContent = `载入失败: ${err.message}`;
+      prepareTraceMapping(sampleTraces.debug.events, sampleTraces.debug.name, true);
+    });
+} else {
+  prepareTraceMapping(sampleTraces.debug.events, sampleTraces.debug.name, true);
+}

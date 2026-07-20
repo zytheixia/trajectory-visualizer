@@ -1,4 +1,5 @@
-export { AgentTraceViewer } from "./viewer/AgentTraceViewer.js";
+export { AgentTraceViewer } from "./viewer/single/AgentTraceViewer.js";
+export { TraceComparisonViewer } from "./viewer/multi/TraceComparisonViewer.js";
 
 export { createMappingAdapter, identityAdapter } from "./adapters/index.js";
 
@@ -10,6 +11,8 @@ export {
   readPath
 } from "./core/traceModel.js";
 
+export { normalizeComparison } from "./core/comparisonModel.js";
+
 export { adapterContractVersion } from "./core/adapterTypes.js";
 
 export {
@@ -20,4 +23,6 @@ export {
   visualizationSchemes
 } from "./config/traceConfig.js";
 
-export { activeLanes, layoutEvents, resolveSchemeLane } from "./layouts/layoutEngine.js";
+export { activeLanes, layoutEvents, resolveSchemeLane } from "./layouts/single/layoutEngine.js";
+
+export { layoutComparison } from "./layouts/multi/comparisonLayout.js";

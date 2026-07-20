@@ -43,6 +43,22 @@
         <section class="panel">
           <h2>视图</h2>
           <label class="control-line">
+            <span>分析模式</span>
+            <select id="modeSelect">
+              <option value="single">单轨迹分析</option>
+              <option value="compare">多轨迹对比</option>
+            </select>
+          </label>
+          <label class="control-line" id="adapterSelectLine">
+            <span>适配器</span>
+            <select id="adapterSelect">
+              <option value="auto">自动识别</option>
+              <option value="identity">标准格式</option>
+              <option value="claude">Claude Code 日志</option>
+              <option value="mapping">字段别名映射</option>
+            </select>
+          </label>
+          <label class="control-line" id="schemeSelectLine">
             <span>观察视角</span>
             <select id="schemeSelect">
               <option value="event_flow">事件流</option>
@@ -50,7 +66,7 @@
               <option value="llm_trace">LLM 调用链</option>
             </select>
           </label>
-          <label class="control-line">
+          <label class="control-line" id="layoutSelectLine">
             <span>布局</span>
             <select id="layoutSelect">
               <option value="swimlane">泳道</option>
@@ -85,6 +101,11 @@
           <button id="applyMappingBtn" type="button">应用映射</button>
         </section>
 
+        <section id="findingsPanel" class="panel findings-panel" hidden>
+          <h2>对比发现</h2>
+          <div id="findingsList" class="findings-list"></div>
+        </section>
+
         <section class="panel stats-panel">
           <h2>统计</h2>
           <dl id="statsGrid" class="stats-grid">
@@ -111,10 +132,23 @@
             <strong id="trackName">Agent 调试示例</strong>
             <span id="trackMeta">等待加载运行数据</span>
           </div>
-          <div class="legend" id="legend">
-            <span class="legend-low">开始</span>
-            <span class="legend-ramp"></span>
-            <span class="legend-high">结束</span>
+          <div style="display: flex; align-items: center; gap: 16px;">
+            <div class="legend" id="legend">
+              <span class="legend-low">开始</span>
+              <span class="legend-ramp"></span>
+              <span class="legend-high">结束</span>
+            </div>
+            <button id="resetCropBtn" class="reset-all-btn" type="button" title="重置所有轨道的聚焦" style="display: none;">
+              重置全部
+            </button>
+            <button id="fullscreenBtn" class="fullscreen-btn" type="button" title="全屏模式 (Esc退出)">
+              <svg class="fs-icon-enter" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+              </svg>
+              <svg class="fs-icon-exit" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+                <path d="M4 14h6v6m10-6h-6v6M4 10h6V4m10 6h-6V4"/>
+              </svg>
+            </button>
           </div>
         </header>
 

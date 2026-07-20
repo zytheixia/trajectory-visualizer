@@ -23,6 +23,7 @@ export const laneSchemes = {
 };
 
 export const categoryAliases = {
+  input: "input",
   user: "input",
   human: "input",
   request: "input",
@@ -34,6 +35,7 @@ export const categoryAliases = {
   llm: "reasoning",
   llm_call: "reasoning",
   tool: "execution",
+  execution: "execution",
   function: "execution",
   command: "execution",
   action: "execution",
@@ -47,14 +49,14 @@ export const categoryAliases = {
 };
 
 export const fieldAliases = {
-  id: ["id", "event_id", "node_id", "step_id", "span_id"],
-  type: ["type", "role", "kind", "event_type", "node_type"],
+  id: ["id", "event_id", "node_id", "step_id", "span_id", "tool_use_id"],
+  type: ["type", "role", "kind", "event_type", "node_type", "tool"],
   category: ["category", "lane", "group", "phase"],
   name: ["name", "title", "label", "tool", "action"],
-  content: ["content", "message", "text", "input", "output", "summary"],
+  content: ["content", "message", "text", "input", "output", "summary", "file_path", "introduced_preview"],
   time: ["time", "timestamp", "started_at", "created_at", "ts"],
   duration: ["duration", "duration_ms", "elapsed_ms", "latency_ms"],
-  status: ["status", "outcome", "state"],
+  status: ["status", "outcome", "state", "tool_success"],
   metadata: ["metadata", "meta", "attributes", "extra"],
   parent: ["parent", "parent_id", "parentId", "source", "from", "prev"],
   actor: ["actor", "speaker", "participant", "owner", "agent_name", "role"]

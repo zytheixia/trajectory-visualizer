@@ -1,6 +1,23 @@
 import { categoryAliases, fieldAliases } from "../config/traceConfig.js";
 
 export function parseTrace(text) {
+  if (typeof text !== "string") {
+    if (Array.isArray(text)) return text;
+    if (typeof text === "object" && text !== null) {
+      if (Array.isArray(text.events)) return text.events;
+      if (Array.isArray(text.trace)) return text.trace;
+      if (Array.isArray(text.steps)) return text.steps;
+      if (Array.isArray(text.nodes)) return text.nodes;
+      if (Array.isArray(text.milestones)) return text.milestones;
+      for (const key of Object.keys(text)) {
+        if (Array.isArray(text[key]) && text[key].length > 0 && typeof text[key][0] === "object") {
+          return text[key];
+        }
+      }
+    }
+    return [];
+  }
+
   const trimmed = text.trim();
   if (!trimmed) return [];
 
@@ -11,6 +28,16 @@ export function parseTrace(text) {
     if (Array.isArray(parsed.trace)) return parsed.trace;
     if (Array.isArray(parsed.steps)) return parsed.steps;
     if (Array.isArray(parsed.nodes)) return parsed.nodes;
+    if (Array.isArray(parsed.milestones)) return parsed.milestones;
+
+    // Smart fallback for any object containing an array of objects
+    if (typeof parsed === "object" && parsed !== null) {
+      for (const key of Object.keys(parsed)) {
+        if (Array.isArray(parsed[key]) && parsed[key].length > 0 && typeof parsed[key][0] === "object") {
+          return parsed[key];
+        }
+      }
+    }
   } catch {
     if (!trimmed.includes("\n")) throw new Error("无法解析 JSON 运行轨迹。");
     return trimmed
@@ -19,7 +46,7 @@ export function parseTrace(text) {
       .map((line) => JSON.parse(line));
   }
 
-  throw new Error("JSON 需要是事件数组，或包含 events / trace / steps / nodes 数组。");
+  throw new Error("JSON 需要是事件数组，或包含 events / trace / steps / nodes / milestones 格式。");
 }
 
 export function normalizeEvents(rawEvents, fieldMapping = null) {
@@ -37,12 +64,23 @@ export function normalizeEvents(rawEvents, fieldMapping = null) {
           : duration * 1000
         : 0;
       const status = String(readField(event, "status", fieldMapping) || "success").toLowerCase();
+      const name = readField(event, "name", fieldMapping) || typeLabel(type);
+
+      const isMilestone = Boolean(
+        event.isMilestone ||
+        event.is_milestone ||
+        event.milestone ||
+        event.metadata?.is_milestone ||
+        (event.index !== undefined && event.survived !== undefined) ||
+        (event.introduced !== undefined && event.survived !== undefined)
+      );
+
       return {
         id: readField(event, "id", fieldMapping) || `event-${index + 1}`,
         type,
         category,
         lane: category,
-        name: readField(event, "name", fieldMapping) || typeLabel(type),
+        name,
         content: readField(event, "content", fieldMapping) || "",
         time,
         rawTime: readField(event, "time", fieldMapping) || "",
@@ -50,6 +88,7 @@ export function normalizeEvents(rawEvents, fieldMapping = null) {
         status,
         parentId: readField(event, "parent", fieldMapping) || "",
         actor: readField(event, "actor", fieldMapping) || inferActor(type, category),
+        isMilestone,
         metadata: collectMetadata(event, fieldMapping),
         payload: event
       };

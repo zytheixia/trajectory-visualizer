@@ -1,4 +1,4 @@
-import { laneSchemes } from "../config/traceConfig.js";
+import { laneSchemes } from "../../config/traceConfig.js";
 
 export function activeLanes(schemeKey) {
   return laneSchemes[schemeKey] || laneSchemes.event_flow;
@@ -8,18 +8,45 @@ export function resolveSchemeLane(event, schemeKey) {
   if (event.status === "failed" || event.status === "error" || event.category === "failure") return "failure";
 
   if (schemeKey === "tool_timeline") {
-    if (event.category === "execution") return "tool";
-    if (event.category === "observation") return "result";
+    if (
+      event.category === "execution" ||
+      /tool|execution|cmd|command|bash|edit|read|write|grep|view/i.test(event.type) ||
+      /tool|execution|cmd|command|bash|edit|read|write|grep|view/i.test(event.name)
+    ) {
+      return "tool";
+    }
+    if (
+      event.category === "observation" ||
+      /result|output|observation/i.test(event.type) ||
+      /result|output|observation/i.test(event.name)
+    ) {
+      return "result";
+    }
     return "context";
   }
 
   if (schemeKey === "llm_trace") {
-    if (["input", "user", "human", "user_message", "task"].includes(event.type) || event.category === "input") {
+    if (["input", "user", "human", "user_message", "task"].includes(event.type) || event.category === "input" || /user input/i.test(event.name)) {
       return "prompt";
     }
-    if (/retrieval|search|context|memory/i.test(event.type)) return "context";
-    if (/llm|model|completion|chat/i.test(event.type) || event.category === "reasoning") return "model";
-    if (/guardrail|check|moderation|validation/i.test(event.type)) return "check";
+    if (
+      event.category === "execution" ||
+      event.category === "observation" ||
+      /retrieval|search|context|memory|tool|read|grep|view|edit|bash|result/i.test(event.type) ||
+      /tool|result|read|grep|view|edit|bash/i.test(event.name)
+    ) {
+      return "context";
+    }
+    if (
+      /llm|model|completion|chat|thought|thinking/i.test(event.type) ||
+      /thinking|thought|reasoning/i.test(event.name) ||
+      (event.category === "reasoning" && !/agent response/i.test(event.name))
+    ) {
+      return "model";
+    }
+    if (/guardrail|check|moderation|validation/i.test(event.type) || /check|guardrail/i.test(event.name)) {
+      return "check";
+    }
     return "output";
   }
 
@@ -39,22 +66,20 @@ function layoutSwimlane(events, schemeKey, width, height) {
   const right = 48;
   const top = 54;
   const bottom = 42;
-  const usableWidth = Math.max(320, width - left - right);
+  const minNodeGap = 110;
+  const calculatedWidth = Math.max(width, left + right + Math.max(events.length - 1, 1) * minNodeGap);
+  const usableWidth = Math.max(320, calculatedWidth - left - right);
   const usableHeight = Math.max(280, height - top - bottom);
   const laneGap = usableHeight / Math.max(lanes.length - 1, 1);
-  const firstTime = events[0]?.time ?? 0;
-  const lastTime = events.at(-1)?.time ?? firstTime + events.length;
-  const duration = Math.max(lastTime - firstTime, events.length - 1, 1);
 
   return events.map((event, index) => {
     const laneKey = resolveSchemeLane(event, schemeKey);
     const laneIndex = lanes.findIndex((lane) => lane.key === laneKey);
-    const fallbackX = left + (usableWidth * index) / Math.max(events.length - 1, 1);
-    const timeX = left + ((event.time - firstTime) / duration) * usableWidth;
+    const stepX = left + (usableWidth * index) / Math.max(events.length - 1, 1);
     return {
       ...event,
       displayLane: laneKey,
-      x: Number.isFinite(timeX) ? timeX : fallbackX,
+      x: stepX,
       y: top + Math.max(laneIndex, 0) * laneGap,
       radius: event.category === "failure" || event.status === "failed" ? 13 : 10
     };

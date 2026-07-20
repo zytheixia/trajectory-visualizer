@@ -33,13 +33,18 @@ src/
     traceModel.js         JSON/JSONL 解析、字段发现、事件归一化
     adapterTypes.js       adapter 契约版本
   adapters/
-    identityAdapter.js    已接近标准结构的数据适配
-    mappingAdapter.js     字段映射适配
-    index.js              adapter 统一导出
+    identityAdapter.js    标准 TraceEvent 格式适配
+    mappingAdapter.js     字段别名与路径映射适配
+    claudeAdapter.js      Claude Code / Anthropic JSONL 日志解包适配
+    index.js              adapter 注册与自动选择导出
   layouts/
-    layoutEngine.js       布局计算，不负责绘制
+    single/
+      layoutEngine.js       单轨迹布局计算，不负责绘制
+    multi/                  多轨迹布局计算 (预留)
   viewer/
-    AgentTraceViewer.js   单轨迹 canvas viewer
+    single/
+      AgentTraceViewer.js   单轨迹 canvas viewer
+    multi/                  多轨迹对比 viewer (预留)
 ```
 
 ## 数据流

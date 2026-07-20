@@ -6,6 +6,7 @@
 
 - [整体架构](./architecture.md): 项目边界、模块职责、数据流、包入口和后续扩展原则。
 - [数据契约](./data-contracts.md): 单轨迹事件、字段映射、多轨迹对比、anchor、segment、finding 的通用结构。
+- [适配器架构与扩展指南](./adapters-guide.md): 外部日志如何通过 Adapter 接入、核心解耦原则与编写自定义 Adapter 指南。
 - [单轨迹使用方式](./single-trace.md): 外部项目如何接入 `AgentTraceViewer`，如何准备数据，如何用字段映射。
 - [多轨迹对比使用方式](./comparison-trace.md): 后续 `TraceComparisonViewer` 的预留接口、数据格式和展示方式。
 
@@ -23,8 +24,9 @@
 | --- | --- | --- |
 | 单轨迹可视化 | 已实现 | [single-trace.md](./single-trace.md) |
 | 字段映射 adapter | 已实现 | [single-trace.md](./single-trace.md) |
+| 外部日志 Adapter 扩展 (Claude 等) | 已实现 | [adapters-guide.md](./adapters-guide.md) |
 | 多布局展示 | 已实现 | [single-trace.md](./single-trace.md) |
 | 本地包接入 | 已实现 | [architecture.md](./architecture.md) |
 | TypeScript 类型声明 | 初步实现 | [data-contracts.md](./data-contracts.md) |
-| 多轨迹对比数据契约 | 设计中 | [comparison-trace.md](./comparison-trace.md) |
-| 多轨迹对比 viewer | 预留 | [comparison-trace.md](./comparison-trace.md) |
+| 多轨迹对比数据契约 | 已实现 | [comparison-trace.md](./comparison-trace.md) |
+| 多轨迹对比 viewer | 已实现 | [comparison-trace.md](./comparison-trace.md) |

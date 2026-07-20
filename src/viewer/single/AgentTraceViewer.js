@@ -1,5 +1,5 @@
-import { laneSchemes, statusColors } from "../config/traceConfig.js";
-import { activeLanes, layoutEvents, resolveSchemeLane } from "../layouts/layoutEngine.js";
+import { laneSchemes, statusColors } from "../../config/traceConfig.js";
+import { activeLanes, layoutEvents, resolveSchemeLane } from "../../layouts/single/layoutEngine.js";
 
 export class AgentTraceViewer {
   constructor(canvas, options = {}) {
@@ -27,12 +27,14 @@ export class AgentTraceViewer {
       showGrid: true,
       progress: 100,
       worldWidth: null,
+      selectedEvents: [],
       onNodeClick: () => {},
       onNodeHover: () => {},
       onRender: () => {},
       ...options
     };
 
+    this.enabled = true;
     this.bindEvents();
     this.resize();
   }
@@ -79,8 +81,11 @@ export class AgentTraceViewer {
   }
 
   getWorldWidth(viewportWidth) {
+    const minGap = 110;
+    const numEvents = this.events.length;
+    const calculated = numEvents > 1 ? 130 + 48 + (numEvents - 1) * minGap : viewportWidth;
     const configured = Number(this.options.worldWidth);
-    return Math.max(viewportWidth, Number.isFinite(configured) ? configured : viewportWidth);
+    return Math.max(viewportWidth, calculated, Number.isFinite(configured) ? configured : viewportWidth);
   }
 
   clampViewport() {
@@ -152,7 +157,12 @@ export class AgentTraceViewer {
     ctx.scale(this.scale, this.scale);
     this.drawWorldBackground(width, height);
     this.drawConnections(visible);
-    visible.forEach((event, index) => this.drawEvent(event, index === this.hoverIndex || index === this.selectedIndex));
+    this.drawRangeHighlight();
+    visible.forEach((event, index) => {
+      const isSelected = this.isNodeSelected(event);
+      const isHovered = index === this.hoverIndex;
+      this.drawEvent(event, isSelected || isHovered);
+    });
     ctx.restore();
 
     this.drawScreenOverlays(width, height);
@@ -351,15 +361,15 @@ export class AgentTraceViewer {
     const lanes = activeLanes(this.options.schemeKey);
     const lane = lanes.find((item) => item.key === event.displayLane) || lanes.find((item) => item.key === resolveSchemeLane(event, this.options.schemeKey)) || lanes[1];
     const categoryLane = laneSchemes.event_flow.find((item) => item.key === event.category);
-    const statusColor = statusColors[event.status] || lane.color;
+    const nodeColor = this.getNodeColor(event);
 
     if (this.options.layoutKey === "waterfall") {
       const barHeight = 14;
       const halfH = barHeight / 2;
       
       // Draw bar background
-      ctx.fillStyle = statusColor + "1a"; // ~10% opacity tint
-      ctx.strokeStyle = isActive ? "#0f172a" : statusColor;
+      ctx.fillStyle = nodeColor + "1a"; // ~10% opacity tint
+      ctx.strokeStyle = isActive ? "#0f172a" : nodeColor;
       ctx.lineWidth = isActive ? 3 / this.scale : 1.5 / this.scale;
       
       this.drawRoundedRect(
@@ -372,7 +382,7 @@ export class AgentTraceViewer {
       );
       
       // Draw solid start node dot on the left of the bar
-      ctx.fillStyle = statusColor;
+      ctx.fillStyle = nodeColor;
       ctx.beginPath();
       ctx.arc(event.x, event.y, 4, 0, Math.PI * 2);
       ctx.fill();
@@ -393,8 +403,37 @@ export class AgentTraceViewer {
       return;
     }
 
+    // Check if this event is a milestone
+    const isMilestone = Boolean(
+      event.isMilestone ||
+      event.payload?.is_milestone ||
+      event.payload?.milestone ||
+      event.metadata?.is_milestone ||
+      event.type === "milestone" ||
+      event.category === "milestone" ||
+      (event.payload && event.payload.index !== undefined && event.payload.survived !== undefined)
+    );
+
+    if (isMilestone) {
+      // Distinct, elegant outer accent ring
+      ctx.strokeStyle = "#f59e0b";
+      ctx.lineWidth = (isActive ? 3.5 : 2.5) / this.scale;
+      ctx.beginPath();
+      ctx.arc(event.x, event.y, event.radius + 4, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Top-right amber badge dot
+      ctx.fillStyle = "#f59e0b";
+      ctx.beginPath();
+      ctx.arc(event.x + event.radius * 0.75, event.y - event.radius * 0.75, 4 / this.scale, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1 / this.scale;
+      ctx.stroke();
+    }
+
     // 1. Draw outer circle
-    ctx.fillStyle = statusColor;
+    ctx.fillStyle = nodeColor;
     ctx.strokeStyle = isActive ? "#0f172a" : "rgba(255, 255, 255, 0.85)";
     ctx.lineWidth = isActive ? 4 / this.scale : 2 / this.scale;
     ctx.beginPath();
@@ -457,6 +496,55 @@ export class AgentTraceViewer {
     return interpolateColor("#2563eb", "#16a34a", progress);
   }
 
+  getNodeColor(event) {
+    const lanes = activeLanes(this.options.schemeKey);
+    const lane = lanes.find((item) => item.key === event.displayLane) || lanes.find((item) => item.key === resolveSchemeLane(event, this.options.schemeKey)) || lanes[1];
+    
+    if (this.options.colorMode === "type") {
+      return lane.color;
+    }
+    if (this.options.colorMode === "status") {
+      return statusColors[event.status] || lane.color;
+    }
+    const progress = event.index / Math.max(this.positioned.length - 1, 1);
+    return interpolateColor("#2563eb", "#16a34a", progress);
+  }
+
+  isNodeSelected(event) {
+    if (this.options.selectedEvents && this.options.selectedEvents.length > 0) {
+      return this.options.selectedEvents.some(se => se.id === event.id);
+    }
+    return event.index === this.selectedIndex;
+  }
+
+  drawRangeHighlight() {
+    if (!this.options.selectedEvents || this.options.selectedEvents.length !== 2) return;
+    const e1 = this.positioned.find(e => e.id === this.options.selectedEvents[0].id);
+    const e2 = this.positioned.find(e => e.id === this.options.selectedEvents[1].id);
+    if (!e1 || !e2) return;
+
+    const ctx = this.ctx;
+    const minX = Math.min(e1.x, e2.x);
+    const maxX = Math.max(e1.x, e2.x);
+    const height = this.canvas.clientHeight;
+
+    ctx.save();
+    ctx.fillStyle = "rgba(37, 99, 235, 0.05)";
+    ctx.strokeStyle = "rgba(37, 99, 235, 0.25)";
+    ctx.lineWidth = 1.5 / this.scale;
+    ctx.setLineDash([4, 4]);
+
+    ctx.fillRect(minX, 30, maxX - minX, height * 1.5 - 30);
+    ctx.beginPath();
+    ctx.moveTo(minX, 30);
+    ctx.lineTo(minX, height * 1.5);
+    ctx.moveTo(maxX, 30);
+    ctx.lineTo(maxX, height * 1.5);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
   hitTest(screenX, screenY) {
     const visible = this.visibleEvents();
     const isWaterfall = this.options.layoutKey === "waterfall";
@@ -482,6 +570,7 @@ export class AgentTraceViewer {
 
   bindEvents() {
     this.on(this.canvas, "pointerdown", (event) => {
+      if (!this.enabled) return;
       const rect = this.canvas.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
@@ -497,6 +586,7 @@ export class AgentTraceViewer {
     });
 
     this.on(this.canvas, "pointermove", (event) => {
+      if (!this.enabled) return;
       const rect = this.canvas.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
@@ -522,6 +612,7 @@ export class AgentTraceViewer {
     });
 
     this.on(this.canvas, "pointerup", (event) => {
+      if (!this.enabled) return;
       if (!this.isDragging) return;
       this.canvas.releasePointerCapture(event.pointerId);
       this.isDragging = false;
@@ -536,10 +627,30 @@ export class AgentTraceViewer {
         this.selectedIndex = hit.index;
         this.options.onNodeClick(hit.node, { x, y, rect, event });
         this.draw();
+      } else {
+        if (this.options.selectedEvents && this.options.selectedEvents.length === 2) {
+          const worldX = (x - this.offsetX) / this.scale;
+          const e1 = this.positioned.find(e => e.id === this.options.selectedEvents[0].id);
+          const e2 = this.positioned.find(e => e.id === this.options.selectedEvents[1].id);
+          if (e1 && e2) {
+            const minX = Math.min(e1.x, e2.x);
+            const maxX = Math.max(e1.x, e2.x);
+            if (worldX >= minX && worldX <= maxX) {
+              if (this.options.onRangeClick) {
+                this.options.onRangeClick("single", this.options.selectedEvents[0], this.options.selectedEvents[1]);
+              }
+              return;
+            }
+          }
+        }
+        if (this.options.onRangeClick) {
+          this.options.onRangeClick("single", null, null);
+        }
       }
     });
 
     this.on(this.canvas, "pointercancel", (event) => {
+      if (!this.enabled) return;
       if (this.isDragging) {
         this.canvas.releasePointerCapture(event.pointerId);
         this.isDragging = false;
@@ -551,6 +662,7 @@ export class AgentTraceViewer {
       this.canvas,
       "wheel",
       (event) => {
+        if (!this.enabled) return;
         event.preventDefault();
         const rect = this.canvas.getBoundingClientRect();
         const mouseX = event.clientX - rect.left;
