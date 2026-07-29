@@ -41,6 +41,12 @@ export class AgentTraceViewer {
 
   setEvents(events) {
     this.events = events;
+    this.allEventsById = new Map();
+    (events || []).forEach((e) => {
+      if (e && e.id) {
+        this.allEventsById.set(String(e.id), e);
+      }
+    });
     this.selectedIndex = 0;
     this.hoverIndex = -1;
     this.resetViewport();
@@ -86,6 +92,38 @@ export class AgentTraceViewer {
     const calculated = numEvents > 1 ? 130 + 48 + (numEvents - 1) * minGap : viewportWidth;
     const configured = Number(this.options.worldWidth);
     return Math.max(viewportWidth, calculated, Number.isFinite(configured) ? configured : viewportWidth);
+  }
+
+  findParentEvent(current, visibleById, fallbackPrevious) {
+    if (!current.parentId) return fallbackPrevious;
+    const pid = String(current.parentId);
+
+    // 1. Direct match in currently visible nodes
+    if (visibleById.has(pid)) return visibleById.get(pid);
+
+    // 2. Prefix match in currently visible nodes (e.g. uuid-think-0)
+    for (const [id, evt] of visibleById.entries()) {
+      if (id.startsWith(pid + "-")) return evt;
+    }
+
+    // 3. Recursive ancestry chain traversal in full un-filtered events map
+    if (this.allEventsById) {
+      let ancestorPid = pid;
+      let depth = 0;
+      while (ancestorPid && depth < 20) {
+        depth += 1;
+        const fullEvt = this.allEventsById.get(ancestorPid) ||
+                        Array.from(this.allEventsById.values()).find(e => String(e.id).startsWith(ancestorPid + "-"));
+        if (!fullEvt || !fullEvt.parentId) break;
+        ancestorPid = String(fullEvt.parentId);
+        if (visibleById.has(ancestorPid)) return visibleById.get(ancestorPid);
+        for (const [id, evt] of visibleById.entries()) {
+          if (id.startsWith(ancestorPid + "-")) return evt;
+        }
+      }
+    }
+
+    return fallbackPrevious;
   }
 
   clampViewport() {
