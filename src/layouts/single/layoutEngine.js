@@ -54,7 +54,6 @@ export function resolveSchemeLane(event, schemeKey) {
 }
 
 export function layoutEvents({ events, layoutKey, schemeKey, width, height }) {
-  if (layoutKey === "tree") return layoutTree(events, schemeKey, width, height);
   if (layoutKey === "interaction") return layoutInteraction(events, width, height);
   if (layoutKey === "waterfall") return layoutWaterfall(events, schemeKey, width, height);
   return layoutSwimlane(events, schemeKey, width, height);

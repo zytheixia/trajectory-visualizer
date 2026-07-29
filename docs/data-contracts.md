@@ -18,6 +18,7 @@ type TraceEvent = {
   status?: "success" | "failed" | "error" | "running" | string;
   parentId?: string;
   actor?: string;
+  isMilestone?: boolean;
   metadata?: Record<string, unknown>;
   payload?: unknown;
 };
@@ -28,17 +29,18 @@ type TraceEvent = {
 | 字段 | 必要 | 说明 |
 | --- | --- | --- |
 | `id` | 是 | 节点唯一 ID。没有时归一化层会生成。 |
-| `type` | 是 | 节点类型，例如 `user`、`planning`、`llm_call`、`tool_call`、`final_answer`。 |
-| `category` | 是 | 展示分类，例如 `input`、`reasoning`、`execution`、`observation`、`failure`。 |
-| `name` | 是 | 节点展示名称。 |
-| `content` | 否 | 节点详情摘要。 |
-| `time` | 是 | 数字时间。可以来自时间戳或原始顺序。 |
+| `type` | 是 | 节点类型，例如 `user`、`thought`、`tool`、`observation`、`final_answer`。 |
+| `category` | 是 | 展示泳道，必须为 `input`、`reasoning`、`execution`、`observation`、`failure` 之一。 |
+| `name` | 是 | 节点展示名称（例如 `"Bash: find"`, `"Edit: js.go"`）。 |
+| `content` | 否 | 节点详情摘要/代码/提示词内容。 |
+| `time` | 是 | 数字时间戳（ms）或递增序号。 |
 | `durationMs` | 否 | 节点耗时，单位毫秒。 |
 | `status` | 否 | 状态，例如 `success`、`running`、`failed`、`skipped`。 |
-| `parentId` | 否 | 父节点 ID，用于树状、分支、回滚、重试展示。 |
-| `actor` | 否 | 参与方，例如 `User`、`Agent`、`Tool`、`Reviewer`。 |
-| `metadata` | 否 | 扩展字段，例如 model、tokens、cost、command、url、trace_id。 |
-| `payload` | 否 | 原始事件，方便接入方详情面板读取。 |
+| `parentId` | 否 | 父节点 ID，用于树状、分支、回溯展示。 |
+| `actor` | 否 | 参与方，例如 `User`、`Agent`、`Tool`、`Observation`。 |
+| `isMilestone` | 否 | 是否为关键里程碑节点。为 `true` 时节点带有双重金环与小金点徽章。 |
+| `metadata` | 否 | 扩展字段对象，例如 `command`、`file_path`、`tokens` 等。 |
+| `payload` | 否 | 原始日志事件引用，方便详情面板展开深度查看。 |
 
 ## 字段映射
 
@@ -107,14 +109,18 @@ type EventRef = {
 
 `EventRef` 是多轨迹对比里的引用单位。不要直接复制节点内容，避免对比结构和原始 trace 数据不同步。
 
-## ComparisonAnchor
+## ComparisonAnchor (跨轨迹对齐线)
 
-anchor 是多条轨迹之间的里程碑对齐点。
+`ComparisonAnchor` 是多轨迹对比结构中**独立于单条轨迹数据之外的对齐线**。它用于声明在横向对比时，将多条轨迹上的具体节点在视觉纵轴上拉平对齐。
+
+> **概念边界区分**：
+> * **里程碑 (`TraceEvent.isMilestone`)**：单条轨迹内部节点自身的固有属性，代表该 Run 内部的关键节点（单轨下带有双重金环与小金点徽章）。
+> * **对齐线 (`ComparisonAnchor`)**：多轨迹对比时独立于轨迹数据之外的对比参考线，用于把跨轨道的节点在 X 轴纵向拉平对齐。
 
 ```ts
 type ComparisonAnchor = {
   id: string;
-  label: string;
+  label: string; // 对齐线展示名称，例如 "计划生成对齐"
   kind:
     | "task_start"
     | "plan_ready"
@@ -135,11 +141,11 @@ type ComparisonAnchor = {
 
 设计要点：
 
-- anchor 是语义里程碑，不是简单 index。
-- anchor 可以只出现在部分 trace 里。
-- 缺失 anchor 本身就是差异。
-- anchor 可以由算法生成，也可以由用户手动标记。
-- viewer 只消费 anchor，不关心 anchor 的生成算法。
+- `ComparisonAnchor` 是独立于轨迹数据之外的对齐参考线，不改变节点本身的属性。
+- 对齐线可以只关联部分 trace 的节点。
+- 缺失对齐线节点本身代表着轨迹执行的分歧差异。
+- 对齐线可以由对比算法动态生成，也可以由用户手动标记。
+- viewer 只负责将绑定的 `eventRefs` 节点在纵向上绘制对齐虚线柱，不关心对齐算法的实现过程。
 
 ## ComparisonSegment
 

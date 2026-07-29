@@ -12,8 +12,10 @@ import { TraceComparisonViewer } from "./viewer/multi/TraceComparisonViewer.js";
 
 const canvas = document.querySelector("#trackCanvas");
 const fileInput = document.querySelector("#fileInput");
+const dirInput = document.querySelector("#dirInput");
 const sampleSelect = document.querySelector("#sampleSelect");
 const loadSampleBtn = document.querySelector("#loadSampleBtn");
+const changeDirBtn = document.querySelector("#changeDirBtn");
 const clearBtn = document.querySelector("#clearBtn");
 const adapterSelect = document.querySelector("#adapterSelect");
 const schemeSelect = document.querySelector("#schemeSelect");
@@ -768,12 +770,43 @@ function stopPlayback() {
 }
 
 fileInput.addEventListener("change", async (event) => {
-  const [file] = event.target.files;
-  if (!file) return;
-  try {
-    await handleFile(file);
-  } catch (error) {
-    alert(error.message);
+  const files = Array.from(event.target.files || []).filter(
+    (f) => f.name.endsWith(".json") || f.name.endsWith(".jsonl")
+  );
+  if (files.length === 0) return;
+
+  if (files.length === 1) {
+    try {
+      await handleFile(files[0]);
+    } catch (error) {
+      alert(error.message);
+    }
+  } else {
+    localFolderFilesMap.clear();
+    files.forEach((f) => localFolderFilesMap.set(f.name, f));
+
+    let html = `<optgroup label="📁 选择的轨迹列表 (${files.length} 个文件)">`;
+    files.forEach((f) => {
+      html += `<option value="local:${f.name}">${f.name}</option>`;
+    });
+    html += `</optgroup>`;
+
+    if (dynamicTraceFilesMap.size > 0) {
+      const serverUserFiles = Array.from(dynamicTraceFilesMap.values()).filter((f) => f.tag === "用户目录");
+      if (serverUserFiles.length > 0) {
+        html += `<optgroup label="📁 服务器用户目录">`;
+        serverUserFiles.forEach((f) => {
+          html += `<option value="${f.path}">${f.name}</option>`;
+        });
+        html += `</optgroup>`;
+      }
+    }
+
+    sampleSelect.innerHTML = html;
+    if (files[0]) {
+      sampleSelect.value = `local:${files[0].name}`;
+      loadSelectedSample();
+    }
   }
 });
 
@@ -853,30 +886,153 @@ sampleSelect.addEventListener("change", () => {
   loadSelectedSample();
 });
 
-function updateSampleSelectOptions() {
+let dynamicTraceFilesMap = new Map();
+
+async function fetchDynamicTraceFiles(dirParam = "") {
+  try {
+    const url = `/api/list-traces${dirParam ? `?dir=${encodeURIComponent(dirParam)}` : ""}`;
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (Array.isArray(data.files)) {
+      dynamicTraceFilesMap.clear();
+      data.files.forEach(f => dynamicTraceFilesMap.set(f.path, f));
+      updateSampleSelectOptions(data.files);
+    }
+  } catch (err) {
+    console.warn("Failed to fetch dynamic traces list:", err);
+  }
+}
+
+function updateSampleSelectOptions(fileList = null) {
   if (currentMode === "compare") {
     sampleSelect.innerHTML = `
       <option value="debugging_comparison">代码修复任务对比</option>
     `;
+    return;
+  }
+
+  if (Array.isArray(fileList) && fileList.length > 0) {
+    const userFiles = fileList.filter(f => f.tag === "用户目录");
+    const sampleFiles = fileList.filter(f => f.tag !== "用户目录");
+
+    let html = "";
+    if (userFiles.length > 0) {
+      html += `<optgroup label="📁 用户轨迹目录">`;
+      userFiles.forEach(f => {
+        html += `<option value="${f.path}">${f.name}</option>`;
+      });
+      html += `</optgroup>`;
+    }
+    if (sampleFiles.length > 0) {
+      html += `<optgroup label="📦 内置示例">`;
+      sampleFiles.forEach(f => {
+        html += `<option value="${f.path}">${f.name}</option>`;
+      });
+      html += `</optgroup>`;
+    }
+    sampleSelect.innerHTML = html;
   } else {
     sampleSelect.innerHTML = `
-      <option value="debug">调试修复</option>
-      <option value="minimal">最小字段</option>
-      <option value="aliases">字段别名</option>
-      <option value="llm">LLM 调用</option>
-      <option value="browser">浏览器 Agent</option>
-      <option value="business">业务审批</option>
+      <option value="realAgent">真实 Agent 轨迹 (59节点示例)</option>
+      <option value="debug">调试修复示例</option>
+      <option value="minimal">最小字段示例</option>
+      <option value="aliases">字段别名示例</option>
+      <option value="llm">LLM 调用示例</option>
+      <option value="browser">浏览器 Agent 示例</option>
+      <option value="business">业务审批示例</option>
     `;
   }
 }
 
-function loadSelectedSample() {
+let localFolderFilesMap = new Map();
+
+if (dirInput) {
+  dirInput.addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files || []).filter(
+      (f) => f.name.endsWith(".json") || f.name.endsWith(".jsonl")
+    );
+    if (files.length === 0) return;
+
+    localFolderFilesMap.clear();
+    files.forEach((f) => localFolderFilesMap.set(f.name, f));
+
+    let html = `<optgroup label="📁 选择的本地目录 (${files.length} 个文件)">`;
+    files.forEach((f) => {
+      html += `<option value="local:${f.name}">${f.name}</option>`;
+    });
+    html += `</optgroup>`;
+
+    if (dynamicTraceFilesMap.size > 0) {
+      const serverUserFiles = Array.from(dynamicTraceFilesMap.values()).filter((f) => f.tag === "用户目录");
+      if (serverUserFiles.length > 0) {
+        html += `<optgroup label="📁 服务器用户目录">`;
+        serverUserFiles.forEach((f) => {
+          html += `<option value="${f.path}">${f.name}</option>`;
+        });
+        html += `</optgroup>`;
+      }
+    }
+
+    sampleSelect.innerHTML = html;
+    if (files[0]) {
+      sampleSelect.value = `local:${files[0].name}`;
+      loadSelectedSample();
+    }
+  });
+}
+
+if (changeDirBtn) {
+  changeDirBtn.addEventListener("click", async () => {
+    const currentDir = new URLSearchParams(window.location.search).get("dir") || "";
+    const newDir = prompt("请输入您本地的轨迹文件目录绝对路径:", currentDir);
+    if (newDir && newDir.trim()) {
+      const trimmed = newDir.trim();
+      const url = new URL(window.location.href);
+      url.searchParams.set("dir", trimmed);
+      window.history.pushState({}, "", url.toString());
+      if (trackMeta) trackMeta.textContent = `正在刷新轨迹目录: ${trimmed}...`;
+      await fetchDynamicTraceFiles(trimmed);
+    }
+  });
+}
+
+async function loadSelectedSample() {
   clearCropState();
   if (currentMode === "compare") {
     const sample = sampleComparisons[sampleSelect.value] || sampleComparisons.debugging_comparison;
     loadComparison(sample.comparison, sample.name);
+    return;
+  }
+
+  const selectedVal = sampleSelect.value;
+  if (selectedVal.startsWith("local:")) {
+    const fileName = selectedVal.replace("local:", "");
+    if (localFolderFilesMap.has(fileName)) {
+      const file = localFolderFilesMap.get(fileName);
+      if (trackMeta) trackMeta.textContent = `正在载入本地文件: ${file.name}...`;
+      try {
+        const text = await file.text();
+        processIncomingTraceData(text, file.name, true);
+      } catch (err) {
+        console.error("Error reading local folder file:", err);
+        if (trackMeta) trackMeta.textContent = `载入失败: ${err.message}`;
+      }
+    }
+  } else if (dynamicTraceFilesMap.has(selectedVal)) {
+    const fileInfo = dynamicTraceFilesMap.get(selectedVal);
+    if (trackMeta) trackMeta.textContent = `正在载入文件: ${fileInfo.name}...`;
+    try {
+      const res = await fetch(`/api/load-file?path=${encodeURIComponent(fileInfo.path)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const rawContent = await res.text();
+      processIncomingTraceData(rawContent, fileInfo.name, true);
+    } catch (err) {
+      console.error("Error loading selected trace file:", err);
+      if (trackMeta) trackMeta.textContent = `载入失败: ${err.message}`;
+    }
   } else {
-    const sample = sampleTraces[sampleSelect.value] || sampleTraces.debug;
+    const sample = sampleTraces[selectedVal] || sampleTraces.realAgent || sampleTraces.debug;
     prepareTraceMapping(sample.events, sample.name, true);
   }
 }
@@ -1156,11 +1312,14 @@ updateSampleSelectOptions();
 
 const urlParams = new URLSearchParams(window.location.search);
 const cliFilePath = urlParams.get("file");
+const cliDirPath = urlParams.get("dir");
 const cliAdapter = urlParams.get("adapter");
 
 if (cliAdapter && adapterSelect && adapters[cliAdapter]) {
   adapterSelect.value = cliAdapter;
 }
+
+fetchDynamicTraceFiles(cliDirPath);
 
 if (cliFilePath) {
   if (trackMeta) trackMeta.textContent = `正在通过命令行载入文件: ${cliFilePath.split("/").pop()}...`;

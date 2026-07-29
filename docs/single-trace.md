@@ -52,9 +52,21 @@ const viewer = new AgentTraceViewer(document.querySelector("#traceCanvas"), {
 });
 
 viewer.setEvents(events);
-```
+## 三种数据对接与配置方式
 
-## 标准事件输入
+根据原始日志格式的不同，系统支持 3 种极其高效的数据对接与字段配置方式：
+
+1. **方式 A：通过 Adapter 适配器解包（推荐，复杂日志一键秒开）**
+   * 对于包含嵌套 `thinking` / `tool_use` 的非标日志（如 Claude Code、LangChain），直接编写或选择专用 Adapter（详见 [docs/adapters-guide.md](./adapters-guide.md)）。
+   * 支持通过命令行 `-a claude` 或界面下拉框直接选取，**0 人工映射**。
+2. **方式 B：静态代码 Mapping 映射**
+   * 对于字段名不同但结构平铺的日志，使用 `createMappingAdapter(mappingConfig)` 预先配置映射字典。
+3. **方式 C：遵从 TraceEvent 标准契约（直通模式，0 配置）**
+   * 上游 Agent 框架导出的日志直接符合 [docs/data-contracts.md](./data-contracts.md) 契约（包含 `id`, `type`, `category`, `name`, `time` 等），直接载入无需任何映射。
+
+---
+
+## 1. 标准事件输入 (遵从 TraceEvent 契约)
 
 如果接入方已经能直接生成标准结构，可以不使用内置 adapter：
 
@@ -140,7 +152,6 @@ viewer.setEvents(events);
 | layoutKey | 用途 |
 | --- | --- |
 | `swimlane` | 按输入、推理、执行、观察、失败等泳道展示。 |
-| `tree` | 按 `parentId` 展示分支，适合断点、重试、回滚、多路径。 |
 | `interaction` | 按 `actor` 分列，适合多 agent、多角色、多工具交互。 |
 | `waterfall` | 按时间和耗时展示 span 风格轨迹。 |
 
@@ -148,7 +159,7 @@ viewer.setEvents(events);
 
 ```js
 viewer.setOptions({
-  layoutKey: "tree"
+  layoutKey: "swimlane"
 });
 ```
 

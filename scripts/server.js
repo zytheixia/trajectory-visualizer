@@ -24,6 +24,58 @@ const server = http.createServer((req, res) => {
   const reqUrl = new URL(req.url, `http://localhost:${PORT}`);
   const pathname = reqUrl.pathname;
 
+  // Handle API endpoint to list available trace files in directories
+  if (pathname === "/api/list-traces") {
+    const customDir = reqUrl.searchParams.get("dir") || process.env.TRACE_DIR || "";
+    const scanDirs = [];
+
+    if (customDir && fs.existsSync(customDir)) {
+      const resolvedCustom = path.resolve(customDir);
+      if (fs.statSync(resolvedCustom).isDirectory()) {
+        scanDirs.push({ dir: resolvedCustom, tag: "用户目录" });
+      } else {
+        scanDirs.push({ dir: path.dirname(resolvedCustom), tag: "用户目录" });
+      }
+    }
+
+    const samplesDir = path.join(rootDir, "samples");
+    if (fs.existsSync(samplesDir)) {
+      scanDirs.push({ dir: samplesDir, tag: "内置示例" });
+    }
+
+    const traceFiles = [];
+    const seenPaths = new Set();
+
+    for (const { dir, tag } of scanDirs) {
+      try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.isFile() && (entry.name.endsWith(".json") || entry.name.endsWith(".jsonl"))) {
+            const fullPath = path.join(dir, entry.name);
+            if (!seenPaths.has(fullPath)) {
+              seenPaths.add(fullPath);
+              traceFiles.push({
+                name: entry.name,
+                path: fullPath,
+                tag: tag,
+                size: fs.statSync(fullPath).size
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error(`Error scanning dir ${dir}:`, err);
+      }
+    }
+
+    res.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Access-Control-Allow-Origin": "*"
+    });
+    res.end(JSON.stringify({ customDir, files: traceFiles }));
+    return;
+  }
+
   // Handle API endpoint to read local files by path
   if (pathname === "/api/load-file") {
     const filePath = reqUrl.searchParams.get("path");

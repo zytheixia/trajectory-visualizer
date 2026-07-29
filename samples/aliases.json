@@ -1,0 +1,42 @@
+{
+  "name": "字段别名示例",
+  "events": [
+    {
+      "event_id": "alias-1",
+      "kind": "human",
+      "title": "外部系统字段",
+      "message": "这个事件没有使用我们的标准字段名。",
+      "started_at": "2026-07-08T09:30:00Z",
+      "outcome": "success",
+      "trace_id": "trace-ext-001"
+    },
+    {
+      "node_id": "alias-2",
+      "event_type": "llm_call",
+      "phase": "reasoning",
+      "label": "模型节点",
+      "text": "字段通过 aliases 映射到内部模型。",
+      "ts": "2026-07-08T09:30:05Z",
+      "latency_ms": 1320,
+      "state": "success",
+      "attributes": {
+        "model": "claude-4-sonnet",
+        "input_tokens": 980,
+        "output_tokens": 143
+      }
+    },
+    {
+      "step_id": "alias-3",
+      "node_type": "function",
+      "group": "execution",
+      "action": "lookupCustomer",
+      "output": "查询客户等级和历史工单。",
+      "created_at": "2026-07-08T09:30:09Z",
+      "elapsed_ms": 410,
+      "extra": {
+        "endpoint": "/internal/customers/cus_1024",
+        "http_status": 200
+      }
+    }
+  ]
+}

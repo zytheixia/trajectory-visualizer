@@ -2,27 +2,45 @@
 
 一个零依赖的本地前端，用于可视化 Agent 运行轨迹：用户请求、模型推理、工具调用、系统观察、错误节点和自定义事件。
 
-## 使用
+## 🚀 快速上手 (Usage Guide)
 
-本仓库自带一个完整 demo 页面，用来调试上传、字段映射、详情面板和多种布局：
+### 1. 命令行全局/本地 CLI（推荐）
+
+可以通过命令行快捷调起可视界面，直接查看单个轨迹文件或整个轨迹目录：
+
+```bash
+# 查看单个轨迹文件
+trace-vis /path/to/trace.json
+
+# 载入 Claude Code / Anthropic 原始 JSONL 日志 (自动解包 thinking / tool_use)
+trace-vis /path/to/claude_log.jsonl -a claude
+
+# 一键挂载并对接整个轨迹文件目录（前端下拉菜单动态可切）
+trace-vis --dir /path/to/my/traces_dir
+
+# 不带任何参数启动（自动扫描当前工作目录与内置示例）
+trace-vis
+```
+
+### 2. 启动本地开发服务
 
 ```bash
 cd trajectory-visualizer
 npm run dev
 ```
 
-然后打开 `http://localhost:5173`。
+服务启动后访问 `http://localhost:5173`。
 
-也可以直接打开 `index.html`，但用本地 HTTP 服务更接近部署环境。
+## 📚 详细文档 (Documentation)
 
-## 文档
+项目在 `docs/` 目录中维护了完整的架构与开发指南：
 
-详细设计和接入方式放在 `docs/` 目录单独维护：
-
-- [整体架构](./docs/architecture.md)
-- [数据契约](./docs/data-contracts.md)
-- [单轨迹使用方式](./docs/single-trace.md)
-- [多轨迹对比使用方式](./docs/comparison-trace.md)
+- 🏛️ **[整体架构](./docs/architecture.md)**：项目边界、模块职责、数据流与组件解耦。
+- 🔌 **[适配器架构与扩展指南](./docs/adapters-guide.md)**：外部日志解包、核心纯洁性与自定义 Adapter 编写。
+- 📋 **[数据契约](./docs/data-contracts.md)**：`TraceEvent` 单轨迹节点与多轨迹对比数据规范。
+- 📈 **[单轨迹使用方式](./docs/single-trace.md)**：三类观察视角（事件流 / 工具时间线 / LLM 调用链）与组件嵌入。
+- 📊 **[多轨迹对比使用方式](./docs/comparison-trace.md)**：多轨迹并行对比、跨轨道对齐线与差异区段高亮。
+- 📦 **[示例目录说明](./samples/README.md)**：8 组标准 JSON / JSONL 测试轨迹文件与数据模板。
 
 ## 作为本地包接入
 

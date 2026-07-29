@@ -1,0 +1,26 @@
+{
+  "name": "最小字段示例",
+  "events": [
+    {
+      "type": "user",
+      "content": "帮我检查这个 bug"
+    },
+    {
+      "type": "thought",
+      "content": "需要先复现问题"
+    },
+    {
+      "type": "tool",
+      "name": "npm test",
+      "status": "failed"
+    },
+    {
+      "type": "error",
+      "content": "TypeError: Cannot read properties of undefined"
+    },
+    {
+      "type": "assistant",
+      "content": "定位到空值分支，建议补默认值"
+    }
+  ]
+}

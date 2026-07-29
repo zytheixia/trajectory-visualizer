@@ -207,7 +207,7 @@ export class TraceComparisonViewer {
     // 3. Draw horizontal lanes/tracks backgrounds
     this.drawTrackLanes(visibleTraces, Math.max(800, width));
 
-    // 4. Draw Anchor Pillars (Milestone vertical aligned lines)
+    // 4. Draw Anchor Pillars (Vertical alignment reference lines across tracks)
     this.drawAnchorPillars(visibleAnchors, height);
 
     // 5. Draw connections/flows inside each trace

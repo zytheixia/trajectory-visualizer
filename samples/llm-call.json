@@ -1,0 +1,53 @@
+{
+  "name": "LLM 调用示例",
+  "events": [
+    {
+      "id": "llm-1",
+      "type": "user_message",
+      "category": "input",
+      "name": "需求",
+      "content": "生成一个账单解释摘要。",
+      "time": "2026-07-08T10:00:00Z"
+    },
+    {
+      "id": "llm-2",
+      "type": "retrieval",
+      "category": "execution",
+      "name": "检索账单上下文",
+      "content": "读取用户过去 3 个月账单。",
+      "time": "2026-07-08T10:00:04Z",
+      "duration_ms": 620,
+      "datasource": "billing-ledger",
+      "rows": 42
+    },
+    {
+      "id": "llm-3",
+      "type": "llm_call",
+      "category": "reasoning",
+      "name": "生成摘要",
+      "content": "调用模型生成解释。",
+      "time": "2026-07-08T10:00:06Z",
+      "duration_ms": 1840,
+      "status": "success",
+      "metadata": {
+        "provider": "openai",
+        "model": "gpt-5",
+        "prompt_tokens": 1380,
+        "completion_tokens": 212,
+        "cost_usd": 0.0184,
+        "temperature": 0.2
+      }
+    },
+    {
+      "id": "llm-4",
+      "type": "guardrail_check",
+      "category": "observation",
+      "name": "安全检查",
+      "content": "检查是否包含敏感财务建议。",
+      "time": "2026-07-08T10:00:09Z",
+      "duration_ms": 240,
+      "policy": "finance-advice-v2",
+      "flagged": false
+    }
+  ]
+}

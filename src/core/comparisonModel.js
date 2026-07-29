@@ -52,10 +52,10 @@ export function normalizeComparison(rawComparison, fieldMapping = null) {
       .filter(Boolean);
   };
 
-  // 2. Normalize and validate anchors
+  // 2. Normalize and validate anchors (Alignment lines)
   const anchors = (rawComparison.anchors || []).map((anchor, idx) => {
     const anchorId = anchor.id || `anchor-${idx + 1}`;
-    const label = anchor.label || `Milestone ${idx + 1}`;
+    const label = anchor.label || `对齐线 ${idx + 1}`;
     const kind = anchor.kind || "custom";
     const eventRefs = filterValidRefs(anchor.eventRefs);
 

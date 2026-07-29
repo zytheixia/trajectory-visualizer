@@ -17,25 +17,26 @@
         </div>
 
         <section class="panel">
-          <h2>数据</h2>
           <label class="upload-zone" for="fileInput">
-            <input id="fileInput" type="file" accept=".json,.jsonl,application/json,application/x-ndjson" />
-            <span>导入运行轨迹</span>
-            <small>支持 JSON 数组、events/trace/steps 对象、JSONL</small>
+            <input id="fileInput" type="file" accept=".json,.jsonl,application/json,application/x-ndjson" multiple />
+            <span>拖拽 / 选择 轨迹文件或目录</span>
+            <small>支持拖入/点击选择单文件 (.json/.jsonl) 或整个文件夹</small>
           </label>
-          <label class="control-line sample-picker">
-            <span>示例</span>
+          <label class="control-line sample-picker" style="margin-top: 12px;">
+            <span>轨迹</span>
             <select id="sampleSelect">
-              <option value="debug">调试修复</option>
-              <option value="minimal">最小字段</option>
-              <option value="aliases">字段别名</option>
-              <option value="llm">LLM 调用</option>
-              <option value="browser">浏览器 Agent</option>
-              <option value="business">业务审批</option>
+              <option value="realAgent">真实 Agent 轨迹 (59节点示例)</option>
+              <option value="debug">调试修复示例</option>
+              <option value="minimal">最小字段示例</option>
+              <option value="aliases">字段别名示例</option>
+              <option value="llm">LLM 调用示例</option>
+              <option value="browser">浏览器 Agent 示例</option>
+              <option value="business">业务审批示例</option>
             </select>
           </label>
           <div class="button-row">
-            <button id="loadSampleBtn" type="button">载入示例</button>
+            <button id="loadSampleBtn" type="button">载入轨迹</button>
+            <button id="changeDirBtn" type="button" class="secondary" title="手动输入/变更本地绝对目录路径">指定路径</button>
             <button id="clearBtn" type="button" class="secondary">清空</button>
           </div>
         </section>
@@ -70,7 +71,6 @@
             <span>布局</span>
             <select id="layoutSelect">
               <option value="swimlane">泳道</option>
-              <option value="tree">树状分支</option>
               <option value="interaction">角色交互</option>
               <option value="waterfall">时序瀑布流</option>
               <option value="cards">思维链卡片</option>

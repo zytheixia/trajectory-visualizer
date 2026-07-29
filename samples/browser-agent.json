@@ -1,0 +1,44 @@
+{
+  "name": "浏览器 Agent 示例",
+  "events": [
+    {
+      "id": "web-1",
+      "type": "task",
+      "category": "input",
+      "name": "用户任务",
+      "content": "打开后台，导出今天的订单 CSV。",
+      "time": "2026-07-08T11:20:00Z"
+    },
+    {
+      "id": "web-2",
+      "type": "browser_navigate",
+      "category": "execution",
+      "name": "打开登录页",
+      "content": "访问运营后台。",
+      "time": "2026-07-08T11:20:05Z",
+      "url": "https://admin.example.com/orders",
+      "tab_id": "tab-7"
+    },
+    {
+      "id": "web-3",
+      "type": "browser_click",
+      "category": "execution",
+      "name": "点击导出",
+      "content": "点击订单表格右上角导出按钮。",
+      "time": "2026-07-08T11:20:18Z",
+      "selector": "[data-testid='export-orders']",
+      "screenshot": "artifacts/order-export-click.png"
+    },
+    {
+      "id": "web-4",
+      "type": "download",
+      "category": "observation",
+      "name": "下载完成",
+      "content": "生成 orders-2026-07-08.csv。",
+      "time": "2026-07-08T11:20:31Z",
+      "file_name": "orders-2026-07-08.csv",
+      "bytes": 83412,
+      "checksum": "sha256:9d2f..."
+    }
+  ]
+}

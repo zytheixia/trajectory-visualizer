@@ -1,0 +1,49 @@
+{
+  "name": "业务审批示例",
+  "events": [
+    {
+      "id": "biz-1",
+      "type": "ticket_created",
+      "category": "input",
+      "name": "审批单",
+      "content": "客户申请提高 API 限额。",
+      "time": "2026-07-08T13:00:00Z",
+      "customer_id": "cus_1024",
+      "priority": "high"
+    },
+    {
+      "id": "biz-2",
+      "type": "risk_score",
+      "category": "execution",
+      "name": "风险评分",
+      "content": "调用内部风控服务。",
+      "time": "2026-07-08T13:00:03Z",
+      "score": 0.18,
+      "rules_hit": [
+        "account_age_ok",
+        "payment_ok"
+      ]
+    },
+    {
+      "id": "biz-3",
+      "type": "human_approval",
+      "category": "observation",
+      "name": "人工审批",
+      "content": "运营同意临时提高限额 7 天。",
+      "time": "2026-07-08T13:05:42Z",
+      "approver": "ops@example.com",
+      "sla_minutes": 15
+    },
+    {
+      "id": "biz-4",
+      "type": "quota_update",
+      "category": "execution",
+      "name": "更新限额",
+      "content": "把每日请求限制从 10k 提升到 50k。",
+      "time": "2026-07-08T13:06:12Z",
+      "old_limit": 10000,
+      "new_limit": 50000,
+      "expires_at": "2026-07-15T13:06:12Z"
+    }
+  ]
+}
