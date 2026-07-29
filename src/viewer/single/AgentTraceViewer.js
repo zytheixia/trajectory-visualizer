@@ -317,6 +317,19 @@ export class AgentTraceViewer {
     }
   }
 
+  findParentEvent(current, byId, fallbackPrevious) {
+    if (!current.parentId) return fallbackPrevious;
+    const pid = String(current.parentId);
+    if (byId.has(pid)) return byId.get(pid);
+
+    // Prefix matching for block suffix IDs like uuid-think-0 or uuid-text-0
+    for (const [id, evt] of byId.entries()) {
+      if (id.startsWith(pid + "-")) return evt;
+    }
+
+    return fallbackPrevious;
+  }
+
   drawConnections(visible) {
     const ctx = this.ctx;
     const byId = new Map(visible.map((event) => [String(event.id), event]));
@@ -327,7 +340,7 @@ export class AgentTraceViewer {
       ctx.setLineDash([3, 3]);
       for (let index = 0; index < visible.length; index += 1) {
         const current = visible[index];
-        const previous = current.parentId && byId.has(String(current.parentId)) ? byId.get(String(current.parentId)) : null;
+        const previous = this.findParentEvent(current, byId, null);
         if (!previous) continue;
         
         ctx.beginPath();
@@ -345,8 +358,8 @@ export class AgentTraceViewer {
     ctx.lineCap = "round";
     for (let index = 0; index < visible.length; index += 1) {
       const current = visible[index];
-      const previous = current.parentId && byId.has(String(current.parentId)) ? byId.get(String(current.parentId)) : visible[index - 1];
-      if (!previous) continue;
+      const previous = this.findParentEvent(current, byId, visible[index - 1]);
+      if (!previous || previous === current) continue;
       ctx.strokeStyle = this.getConnectionColor(current, index / Math.max(visible.length - 1, 1));
       ctx.beginPath();
       ctx.moveTo(previous.x, previous.y);
