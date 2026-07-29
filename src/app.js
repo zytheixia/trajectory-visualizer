@@ -413,9 +413,18 @@ function updateStats() {
     node.textContent = values[index];
   });
 
-  trackMeta.textContent = events.length
-    ? `${formatTime(events[0].time)} -> ${formatTime(events.at(-1).time)}`
-    : "等待加载运行数据";
+  if (events.length) {
+    if (activeTraceMetadata?.mine) {
+      const mine = activeTraceMetadata.mine;
+      const kept = mine.fates?.kept ?? 0;
+      const codeSteps = mine.code_steps?.length ?? 0;
+      trackMeta.textContent = `${events.length} 个节点 | 🌟 ${kept} 个留存里程碑 | 💻 ${codeSteps} 个代码修改步`;
+    } else {
+      trackMeta.textContent = `${formatTime(events[0].time)} -> ${formatTime(events.at(-1).time)}`;
+    }
+  } else {
+    trackMeta.textContent = "等待加载运行数据";
+  }
 }
 
 function updateStatsLabels() {
@@ -724,6 +733,8 @@ function applySelectedAdapter(rawEvents, options = {}) {
   return selectedAdapter.transform(rawEvents, options);
 }
 
+let activeTraceMetadata = null;
+
 function processIncomingTraceData(rawContent, fileName, shouldAutoApply = true) {
   let parsedData;
   if (typeof rawContent === "string") {
@@ -735,6 +746,8 @@ function processIncomingTraceData(rawContent, fileName, shouldAutoApply = true) 
   } else {
     parsedData = rawContent;
   }
+
+  activeTraceMetadata = parsedData && typeof parsedData === "object" ? parsedData.metadata || null : null;
 
   if (isMultiTraceData(parsedData)) {
     modeSelect.value = "compare";

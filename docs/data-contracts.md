@@ -252,3 +252,45 @@ const comparison = {
   ]
 };
 ```
+
+---
+
+## Annotated Trace 扩展规范 (`trajectory-observe/annotated-trace@1`)
+
+针对带有代码修改归因 (Code Attribution) 与最终代码留存状态的轨迹文件，支持 `annotated-trace@1` 属性扩展。
+
+### 顶层根结构
+
+```ts
+type AnnotatedTraceRoot = {
+  run_id: string;
+  events: TraceEvent[];
+  metadata: {
+    contract: "trajectory-observe/annotated-trace@1";
+    source_path?: string;
+    session_start_ms?: number;
+    session_end_ms?: number;
+    duration_ms?: number;
+    mine?: {
+      milestone_count: number;
+      fates: { kept: number; noop?: number; superseded?: number; failed?: number };
+      bands: { full: number; partial: number; none: number };
+      code_steps: Array<{ step_index: number; event_id: string; tool: string; file_path: string; line_count: number; share: number }>;
+    };
+  };
+};
+```
+
+### Tool 节点扩展属性 (`event.metadata`)
+
+| 属性 | 类型 | 说明 |
+| --- | --- | --- |
+| `isMilestone` | `boolean` | 是否为最终存活贡献里程碑 (界面渲染双重金环/金点) |
+| `metadata.fate` | `string` | 代码改动命运：`kept` (全留存) / `partial` (部分留存) / `superseded` (已被后续改动覆盖/废笔) / `noop` (无实际改动) / `failed` (失败) |
+| `metadata.survival_ratio` | `number` | 代码行存活比例 (0.0 ~ 1.0) |
+| `metadata.band` | `string` | 贡献纯度级别 (`full` / `partial` / `none`) |
+| `metadata.introduced` | `number` | 本步骤新增修改代码行数 |
+| `metadata.survived` | `number` | 最终在 codebase 中留存的代码行数 |
+| `metadata.superseded` | `number` | 被后续编辑覆盖/废弃的代码行数 |
+| `metadata.invalidated_by` | `Array<{ step_index, tool_use_id, killed }>` | 覆盖来源链接列表。绘制红色虚线弧线指向覆盖该代码的后续节点 |
+| `metadata.attributed_lines` | `number` | 最终 last-writer 贡献归因行数 |

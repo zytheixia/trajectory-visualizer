@@ -354,6 +354,30 @@ export class AgentTraceViewer {
       ctx.bezierCurveTo(midX, previous.y, midX, current.y, current.x, current.y);
       ctx.stroke();
     }
+
+    // Draw invalidation (superseded) curved arcs
+    ctx.save();
+    ctx.lineWidth = 1.5 / this.scale;
+    ctx.strokeStyle = "rgba(239, 68, 68, 0.75)";
+    ctx.setLineDash([4, 4]);
+
+    visible.forEach((current) => {
+      const invalidations = current.metadata?.invalidated_by || current.payload?.metadata?.invalidated_by;
+      if (Array.isArray(invalidations) && invalidations.length > 0) {
+        invalidations.forEach((inv) => {
+          const targetId = inv.tool_use_id || inv.event_id;
+          if (targetId && byId.has(String(targetId))) {
+            const targetNode = byId.get(String(targetId));
+            ctx.beginPath();
+            ctx.moveTo(current.x, current.y);
+            const cpY = Math.min(current.y, targetNode.y) - 35;
+            ctx.quadraticCurveTo((current.x + targetNode.x) / 2, cpY, targetNode.x, targetNode.y);
+            ctx.stroke();
+          }
+        });
+      }
+    });
+    ctx.restore();
   }
 
   drawEvent(event, isActive) {
@@ -403,7 +427,13 @@ export class AgentTraceViewer {
       return;
     }
 
-    // Check if this event is a milestone
+    // Check if this event is a milestone or has specific annotated fate
+    const fate = String(
+      event.metadata?.fate ||
+      event.payload?.metadata?.fate ||
+      ""
+    ).toLowerCase();
+
     const isMilestone = Boolean(
       event.isMilestone ||
       event.payload?.is_milestone ||
@@ -411,30 +441,43 @@ export class AgentTraceViewer {
       event.metadata?.is_milestone ||
       event.type === "milestone" ||
       event.category === "milestone" ||
-      (event.payload && event.payload.index !== undefined && event.payload.survived !== undefined)
+      fate === "kept" ||
+      fate === "partial"
     );
+
+    const isSuperseded = fate === "superseded";
+    const isNoop = fate === "noop";
 
     if (isMilestone) {
       // Distinct, elegant outer accent ring
-      ctx.strokeStyle = "#f59e0b";
+      ctx.strokeStyle = fate === "partial" ? "#f59e0b" : "#10b981";
       ctx.lineWidth = (isActive ? 3.5 : 2.5) / this.scale;
       ctx.beginPath();
       ctx.arc(event.x, event.y, event.radius + 4, 0, Math.PI * 2);
       ctx.stroke();
 
-      // Top-right amber badge dot
-      ctx.fillStyle = "#f59e0b";
+      // Top-right amber/emerald badge dot
+      ctx.fillStyle = fate === "partial" ? "#f59e0b" : "#10b981";
       ctx.beginPath();
       ctx.arc(event.x + event.radius * 0.75, event.y - event.radius * 0.75, 4 / this.scale, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = 1 / this.scale;
       ctx.stroke();
+    } else if (isSuperseded) {
+      // Superseded / Overwritten node indicator
+      ctx.strokeStyle = "#ef4444";
+      ctx.lineWidth = 2 / this.scale;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.arc(event.x, event.y, event.radius + 3, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
 
     // 1. Draw outer circle
-    ctx.fillStyle = nodeColor;
-    ctx.strokeStyle = isActive ? "#0f172a" : "rgba(255, 255, 255, 0.85)";
+    ctx.fillStyle = isSuperseded ? "rgba(239, 68, 68, 0.15)" : isNoop ? "rgba(148, 163, 184, 0.15)" : nodeColor;
+    ctx.strokeStyle = isActive ? "#0f172a" : isSuperseded ? "#ef4444" : "rgba(255, 255, 255, 0.85)";
     ctx.lineWidth = isActive ? 4 / this.scale : 2 / this.scale;
     ctx.beginPath();
     ctx.arc(event.x, event.y, event.radius, 0, Math.PI * 2);
