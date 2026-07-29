@@ -123,7 +123,8 @@ export class AgentTraceViewer {
       }
     }
 
-    return fallbackPrevious;
+    // If explicit parentId could not be resolved in the dataset, do NOT create fake fallback edges from previous nodes
+    return null;
   }
 
   clampViewport() {
