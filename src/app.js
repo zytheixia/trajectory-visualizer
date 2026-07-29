@@ -15,7 +15,6 @@ const fileInput = document.querySelector("#fileInput");
 const dirInput = document.querySelector("#dirInput");
 const sampleSelect = document.querySelector("#sampleSelect");
 const loadSampleBtn = document.querySelector("#loadSampleBtn");
-const changeDirBtn = document.querySelector("#changeDirBtn");
 const clearBtn = document.querySelector("#clearBtn");
 const adapterSelect = document.querySelector("#adapterSelect");
 const schemeSelect = document.querySelector("#schemeSelect");
@@ -982,20 +981,7 @@ if (dirInput) {
   });
 }
 
-if (changeDirBtn) {
-  changeDirBtn.addEventListener("click", async () => {
-    const currentDir = new URLSearchParams(window.location.search).get("dir") || "";
-    const newDir = prompt("请输入您本地的轨迹文件目录绝对路径:", currentDir);
-    if (newDir && newDir.trim()) {
-      const trimmed = newDir.trim();
-      const url = new URL(window.location.href);
-      url.searchParams.set("dir", trimmed);
-      window.history.pushState({}, "", url.toString());
-      if (trackMeta) trackMeta.textContent = `正在刷新轨迹目录: ${trimmed}...`;
-      await fetchDynamicTraceFiles(trimmed);
-    }
-  });
-}
+
 
 async function loadSelectedSample() {
   clearCropState();
